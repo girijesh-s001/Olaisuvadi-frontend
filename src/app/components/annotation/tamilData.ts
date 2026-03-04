@@ -401,6 +401,24 @@ export const TAMIL_GROUPS: TamilGroup[] = [
           { label: "TDIAC_II_v1", description: "Extended" },
         ],
       },
+      {
+        char: " ே",
+        label: "TDIAC_III",
+        name: " ே(1 matra)",
+        variants: [
+          { label: "TDIAC_III", description: "Standard form" },
+          { label: "TDIAC_III_v1", description: "Joint-Extended" },
+        ],
+      },
+      {
+        char: " ெ",
+        label: "TDIAC_IV",
+        name: " ெ (ī matra)",
+        variants: [
+          { label: "TDIAC_IV", description: "Standard form" },
+          { label: "TDIAC_IV_v1", description: "Joint" },
+        ],
+      },
     ],
   },
 ];

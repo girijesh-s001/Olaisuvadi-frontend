@@ -395,7 +395,7 @@ export function AnnotationWorkspace() {
         <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>0</kbd> Fit</span>
         <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>Esc</kbd> Deselect</span>
         <div className="flex-1" />
-        <span className="text-slate-700">Aolaisuvadi Palm Leaf Annotation Tool • v1.0</span>
+        <span className="text-slate-700">Olaisuvadi Palm Leaf Annotation Tool • v1.0</span>
       </div>
 
       {/* Hidden file input */}
