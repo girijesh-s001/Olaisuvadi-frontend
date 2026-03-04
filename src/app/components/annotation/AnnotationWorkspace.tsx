@@ -31,6 +31,15 @@ const DEFAULT_JOINS = {
   touching_ids: [],
 };
 
+interface EncodedGlyph {
+  bboxId: string;
+  label: string;
+  vector: number[];
+}
+
+const RECOMMEND_STRONG_THRESHOLD = 0.55;
+const RECOMMEND_FALLBACK_THRESHOLD = 0.25;
+
 function generateImageId(fileName: string): string {
   const base = fileName.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9]/g, "_");
   return `page_${base}`.toLowerCase().replace(/__+/g, "_").substring(0, 30);
@@ -91,6 +100,79 @@ function toYAML(value: unknown, indent = 0): string {
     .join("\n");
 }
 
+function cosineSimilarity(a: number[], b: number[]): number {
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  const len = Math.min(a.length, b.length);
+  for (let i = 0; i < len; i += 1) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  if (normA === 0 || normB === 0) return 0;
+  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+}
+
+function meanAbsoluteSimilarity(a: number[], b: number[]): number {
+  const len = Math.min(a.length, b.length);
+  if (len === 0) return 0;
+  let total = 0;
+  for (let i = 0; i < len; i += 1) {
+    total += Math.abs(a[i] - b[i]);
+  }
+  const mae = total / len;
+  // For centered grayscale vectors, practical diff range is usually <= 1.
+  return Math.max(0, 1 - mae);
+}
+
+function combinedSimilarity(a: number[], b: number[]): number {
+  const cos = cosineSimilarity(a, b);
+  const cos01 = (cos + 1) / 2; // [-1,1] -> [0,1]
+  const mae = meanAbsoluteSimilarity(a, b);
+  // Weighted blend: cosine captures structure, MAE adds robustness.
+  return 0.6 * cos01 + 0.4 * mae;
+}
+
+async function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function encodeBBox(image: HTMLImageElement, bbox: BoundingBox, size = 16): number[] | null {
+  if (bbox.w <= 1 || bbox.h <= 1) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+
+  ctx.drawImage(
+    image,
+    bbox.x, bbox.y, bbox.w, bbox.h,
+    0, 0, size, size
+  );
+
+  const data = ctx.getImageData(0, 0, size, size).data;
+  const vector: number[] = [];
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const gray = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    vector.push(gray);
+  }
+
+  const mean = vector.reduce((sum, v) => sum + v, 0) / vector.length;
+  const centered = vector.map((v) => v - mean);
+  return centered;
+}
+
 export function AnnotationWorkspace() {
   const [imageMeta, setImageMeta] = useState<ImageMeta | null>(null);
   const [bboxes, setBboxes] = useState<BoundingBox[]>([]);
@@ -99,9 +181,22 @@ export function AnnotationWorkspace() {
   const [zoom, setZoom] = useState(1);
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [newBoxId, setNewBoxId] = useState<string | null>(null);
+  const [recommendationEnabled, setRecommendationEnabled] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem("annotation_recommendations_enabled");
+      return stored == null ? true : stored === "true";
+    } catch {
+      return true;
+    }
+  });
+  const [recommendedLabel, setRecommendedLabel] = useState<string | null>(null);
+  const [recommendedScore, setRecommendedScore] = useState<number | null>(null);
+  const [imageReadySrc, setImageReadySrc] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const undoStackRef = useRef<BoundingBox[][]>([]);
   const redoStackRef = useRef<BoundingBox[][]>([]);
+  const imageRef = useRef<HTMLImageElement | null>(null);
+  const [encodedGlyphs, setEncodedGlyphs] = useState<EncodedGlyph[]>([]);
 
   // user-defined characters/folders that should persist across sessions
   const [customChars, setCustomChars] = useState<TamilChar[]>(() => {
@@ -163,6 +258,11 @@ export function AnnotationWorkspace() {
       };
       setImageMeta(meta);
       setBboxes([]);
+      imageRef.current = null;
+      setImageReadySrc(null);
+      setEncodedGlyphs([]);
+      setRecommendedLabel(null);
+      setRecommendedScore(null);
       undoStackRef.current = [];
       redoStackRef.current = [];
       setSelectedId(null);
@@ -526,6 +626,116 @@ export function AnnotationWorkspace() {
     customChars.forEach((c) => registerCustomChar(c));
   }, [customChars]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem("annotation_recommendations_enabled", String(recommendationEnabled));
+    } catch { }
+  }, [recommendationEnabled]);
+
+  // Load current manuscript image for descriptor extraction.
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!imageMeta?.src) {
+        imageRef.current = null;
+        return;
+      }
+      try {
+        const img = await loadImage(imageMeta.src);
+        if (!cancelled) {
+          imageRef.current = img;
+          setImageReadySrc(imageMeta.src);
+        }
+      } catch {
+        if (!cancelled) {
+          imageRef.current = null;
+          setImageReadySrc(null);
+        }
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [imageMeta?.src]);
+
+  // Background encoding index from already-labeled bboxes.
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!recommendationEnabled || !imageRef.current || !imageReadySrc || bboxes.length === 0) {
+        setEncodedGlyphs([]);
+        return;
+      }
+
+      const encoded: EncodedGlyph[] = [];
+      for (const bbox of bboxes) {
+        if (bbox.labels.length === 0) continue;
+        const vector = encodeBBox(imageRef.current, bbox);
+        if (!vector) continue;
+        encoded.push({
+          bboxId: bbox.id,
+          label: bbox.labels[0],
+          vector,
+        });
+      }
+      if (!cancelled) setEncodedGlyphs(encoded);
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [bboxes, recommendationEnabled, imageMeta?.src, imageReadySrc]);
+
+  // Find recommendation for the currently created bbox.
+  useEffect(() => {
+    const run = async () => {
+      if (!showSearchModal || !newBoxId || !recommendationEnabled || !imageRef.current || !imageReadySrc) {
+        setRecommendedLabel(null);
+        setRecommendedScore(null);
+        return;
+      }
+
+      const current = bboxes.find((b) => b.id === newBoxId);
+      if (!current) {
+        setRecommendedLabel(null);
+        setRecommendedScore(null);
+        return;
+      }
+
+      const targetVec = encodeBBox(imageRef.current, current);
+      if (!targetVec) {
+        setRecommendedLabel(null);
+        setRecommendedScore(null);
+        return;
+      }
+
+      let best: { label: string; score: number } | null = null;
+      for (const item of encodedGlyphs) {
+        if (item.bboxId === newBoxId) continue;
+        const score = combinedSimilarity(targetVec, item.vector);
+        if (!best || score > best.score) best = { label: item.label, score };
+      }
+
+      // Keep suggestions practical: strong threshold first, then a fallback.
+      if (best && best.score >= RECOMMEND_STRONG_THRESHOLD) {
+        setRecommendedLabel(best.label);
+        setRecommendedScore(best.score);
+      } else if (best && best.score >= RECOMMEND_FALLBACK_THRESHOLD) {
+        setRecommendedLabel(best.label);
+        setRecommendedScore(best.score);
+      } else if (best) {
+        // Always surface the best known label when index exists.
+        setRecommendedLabel(best.label);
+        setRecommendedScore(best.score);
+      } else {
+        setRecommendedLabel(null);
+        setRecommendedScore(null);
+      }
+    };
+    run();
+  }, [showSearchModal, newBoxId, recommendationEnabled, bboxes, encodedGlyphs, imageReadySrc]);
+
   // Warn user before refresh/close when work exists.
   useEffect(() => {
     const hasWork = !!imageMeta || bboxes.length > 0;
@@ -559,6 +769,8 @@ export function AnnotationWorkspace() {
         onZoomReset={handleZoomReset}
         onExportYAML={handleExportYAML}
         onExportImages={handleExportImages}
+        recommendationEnabled={recommendationEnabled}
+        onToggleRecommendation={() => setRecommendationEnabled((prev) => !prev)}
         onClearAll={() => {
           updateBBoxesWithHistory(() => []);
           setSelectedId(null);
@@ -650,9 +862,18 @@ export function AnnotationWorkspace() {
       <CharacterSearchModal
         isOpen={showSearchModal}
         onSelectCharacter={handleSelectCharacterFromSearch}
+        recommendationEnabled={recommendationEnabled}
+        recommendedLabel={recommendedLabel}
+        recommendedScore={recommendedScore}
+        onAcceptRecommendation={() => {
+          if (!recommendedLabel) return;
+          handleSelectCharacterFromSearch(recommendedLabel);
+        }}
         onClose={() => {
           setShowSearchModal(false);
           setNewBoxId(null);
+          setRecommendedLabel(null);
+          setRecommendedScore(null);
         }}
         extraChars={customChars}
       />

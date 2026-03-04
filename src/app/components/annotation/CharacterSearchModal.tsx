@@ -1,17 +1,30 @@
 import React, { useState, useEffect, useRef } from "react";
-import { TAMIL_GROUPS } from "./tamilData";
+import { TAMIL_GROUPS, getLabelInfo } from "./tamilData";
 import { TamilChar } from "./types";
-import { Search, X } from "lucide-react";
+import { Search, X, Sparkles } from "lucide-react";
 
 interface Props {
   isOpen: boolean;
   onSelectCharacter: (label: string) => void;
   onClose: () => void;
-  // additional characters (e.g. user‑defined folders) to include in search
+  // additional characters (e.g. user-defined folders) to include in search
   extraChars?: TamilChar[];
+  recommendationEnabled?: boolean;
+  recommendedLabel?: string | null;
+  recommendedScore?: number | null;
+  onAcceptRecommendation?: () => void;
 }
 
-export function CharacterSearchModal({ isOpen, onSelectCharacter, onClose, extraChars }: Props) {
+export function CharacterSearchModal({
+  isOpen,
+  onSelectCharacter,
+  onClose,
+  extraChars,
+  recommendationEnabled = true,
+  recommendedLabel = null,
+  recommendedScore = null,
+  onAcceptRecommendation,
+}: Props) {
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<Array<{ char: TamilChar; group: string }>>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -54,7 +67,7 @@ export function CharacterSearchModal({ isOpen, onSelectCharacter, onClose, extra
 
     setResults(found);
     setSelectedIndex(0);
-  }, [search]);
+  }, [search, extraChars]);
 
   // Focus input when modal opens
   useEffect(() => {
@@ -75,6 +88,14 @@ export function CharacterSearchModal({ isOpen, onSelectCharacter, onClose, extra
       setSelectedIndex((prev) => (prev - 1 + Math.max(results.length, 1)) % Math.max(results.length, 1));
     } else if (e.key === "Enter") {
       e.preventDefault();
+      if (!search.trim() && recommendationEnabled && recommendedLabel) {
+        if (onAcceptRecommendation) onAcceptRecommendation();
+        else {
+          onSelectCharacter(recommendedLabel);
+          onClose();
+        }
+        return;
+      }
       if (results.length > 0) {
         const selected = results[selectedIndex];
         onSelectCharacter(selected.char.label);
@@ -88,6 +109,9 @@ export function CharacterSearchModal({ isOpen, onSelectCharacter, onClose, extra
   };
 
   if (!isOpen) return null;
+
+  const recommendationInfo = recommendedLabel ? getLabelInfo(recommendedLabel) : null;
+  const recommendationPercent = recommendedScore != null ? `${Math.round(recommendedScore * 100)}%` : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0, 0, 0, 0.5)" }}>
@@ -118,6 +142,57 @@ export function CharacterSearchModal({ isOpen, onSelectCharacter, onClose, extra
 
         {/* Results */}
         <div className="max-h-96 overflow-y-auto">
+          {!recommendationEnabled && (
+            <div
+              className="px-4 py-2 text-xs"
+              style={{ background: "#1f2937", color: "#f59e0b", borderBottom: "1px solid #1e293b" }}
+            >
+              Recommendations are disabled (toggle Reco On in toolbar).
+            </div>
+          )}
+          {recommendationEnabled && !recommendedLabel && !search.trim() && (
+            <div
+              className="px-4 py-2 text-xs"
+              style={{ background: "#0f172a", color: "#94a3b8", borderBottom: "1px solid #1e293b" }}
+            >
+              Recommendation unavailable. Label a few boxes first for better suggestions.
+            </div>
+          )}
+          {recommendationEnabled && recommendedLabel && (
+            <button
+              onClick={() => {
+                if (onAcceptRecommendation) onAcceptRecommendation();
+                else {
+                  onSelectCharacter(recommendedLabel);
+                  onClose();
+                }
+              }}
+              className="w-full px-4 py-2 text-left flex items-center gap-3 transition-colors text-sm"
+              style={{
+                background: "#10243f",
+                borderBottom: "1px solid #1e293b",
+                color: "#e2e8f0",
+              }}
+            >
+              <Sparkles size={16} className="text-amber-300 flex-shrink-0" />
+              <span
+                className="text-2xl w-8 text-center flex-shrink-0"
+                style={{ fontFamily: "'Noto Sans Tamil', serif" }}
+              >
+                {recommendationInfo?.char || "?"}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div style={{ color: "#cbd5e1", fontWeight: 600 }}>
+                  Recommendation: {recommendationInfo?.charName || recommendedLabel}
+                </div>
+                <div style={{ color: "#93c5fd", fontSize: "0.75rem" }}>
+                  {recommendedLabel}
+                  {recommendationPercent ? ` - similarity ${recommendationPercent}` : ""}
+                  {" - press Enter to accept"}
+                </div>
+              </div>
+            </button>
+          )}
           {results.length === 0 ? (
             <div className="px-4 py-8 text-center text-slate-500 text-sm">
               {search ? "No characters found" : "Start typing to search for a character"}
@@ -167,7 +242,7 @@ export function CharacterSearchModal({ isOpen, onSelectCharacter, onClose, extra
         </div>
 
         {/* Footer hint */}
-        {results.length > 0 && (
+        {(results.length > 0 || (recommendationEnabled && !!recommendedLabel)) && (
           <div
             className="px-4 py-2 text-xs flex items-center justify-between"
             style={{ background: "#060f1e", color: "#64748b", borderTop: "1px solid #1e293b" }}

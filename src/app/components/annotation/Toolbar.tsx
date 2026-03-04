@@ -12,6 +12,7 @@ import {
   Image as ImageIcon,
   Upload,
   Images,
+  Search,
 } from "lucide-react";
 import { DrawingMode, BoundingBox } from "./types";
 
@@ -28,6 +29,8 @@ interface Props {
   onZoomReset: () => void;
   onExportYAML: () => void;
   onExportImages: () => void;
+  recommendationEnabled: boolean;
+  onToggleRecommendation: () => void;
   onClearAll: () => void;
   onDeleteSelected: () => void;
   onUploadClick: () => void;
@@ -96,6 +99,8 @@ export function Toolbar({
   onZoomReset,
   onExportYAML,
   onExportImages,
+  recommendationEnabled,
+  onToggleRecommendation,
   onClearAll,
   onDeleteSelected,
   onUploadClick,
@@ -226,6 +231,13 @@ export function Toolbar({
         icon={<Images size={14} />}
         label="Export Images"
         onClick={onExportImages}
+        disabled={!hasImage}
+      />
+      <ToolBtn
+        icon={<Search size={14} />}
+        label={recommendationEnabled ? "Reco On" : "Reco Off"}
+        active={recommendationEnabled}
+        onClick={onToggleRecommendation}
         disabled={!hasImage}
       />
     </div>
