@@ -119,7 +119,7 @@ export function Toolbar({
           </svg>
         </div>
         <span className="text-sm text-slate-200 hidden md:block" style={{ fontWeight: 600, letterSpacing: 0.3 }}>
-          Aolaisuvadi
+          Olaisuvadi
         </span>
         <span className="text-xs text-slate-500 hidden lg:block">Annotator</span>
       </div>
