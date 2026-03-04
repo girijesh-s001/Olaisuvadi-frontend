@@ -151,7 +151,7 @@ function CharRow({
               onDelete();
             }}
             className="text-slate-500 hover:text-red-400 transition-colors"
-            title="Delete custom folder"
+            title="Delete custom glyph"
           >
             <Trash2 size={13} />
           </button>
@@ -297,7 +297,7 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
         )}
       </div>
 
-      {/* Custom Folder Section - form to create new metadata-rich folder */}
+      {/* Custom Glyph Section - form to create new metadata-rich glyph */}
       <div className="px-3 py-2" style={{ borderBottom: "1px solid #1e293b", background: "#0a1525" }}>
         {!showFolderInput ? (
           <button
@@ -312,7 +312,7 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
             }}
           >
             <FolderPlus size={14} />
-            <span style={{ fontWeight: 600, letterSpacing: 0.3 }}>CREATE CUSTOM FOLDER</span>
+            <span style={{ fontWeight: 600, letterSpacing: 0.3 }}>CREATE CUSTOM GLYPH</span>
           </button>
         ) : (
           <div className="space-y-2">
@@ -396,7 +396,7 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
         {/* Custom folders added by user – treated just like regular characters */}
         {customChars.length > 0 && (
           <div className="mb-3">
-            <div className="text-xs text-slate-400 mb-1">Custom Folders</div>
+            <div className="text-xs text-slate-400 mb-1">Custom Glyphs</div>
             {customChars.filter(filterChar).map((char) => (
               <CharRow
                 key={char.label}
@@ -406,7 +406,7 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
                 onRemoveLabel={onRemoveLabel}
                 disabled={disabled}
                 onDelete={() => {
-                  const ok = window.confirm(`Delete custom folder "${char.name}"?`);
+                  const ok = window.confirm(`Delete custom glyph "${char.name}"?`);
                   if (ok) onDeleteCustomChar(char.label);
                 }}
               />
@@ -417,22 +417,22 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
         {orphanFolders.length > 0 && (
           <div className="mb-3">
             <button
-              onClick={() => toggleGroup("Custom Folders")}
+              onClick={() => toggleGroup("Custom Glyphs")}
               className="w-full flex items-center gap-2 px-2 py-1.5 rounded mb-1 transition-colors hover:bg-slate-800"
               style={{ background: "transparent" }}
             >
               <Folder size={16} className="text-blue-400" />
               <span className="text-xs text-slate-400 flex-1 text-left" style={{ fontWeight: 600 }}>
-                Custom Folders
+                Custom Glyphs
               </span>
               <span className="text-xs text-slate-600">({orphanFolders.length})</span>
-              {expandedGroups.has("Custom Folders") ? (
+              {expandedGroups.has("Custom Glyphs") ? (
                 <ChevronDown size={12} className="text-slate-500" />
               ) : (
                 <ChevronRight size={12} className="text-slate-500" />
               )}
             </button>
-            {expandedGroups.has("Custom Folders") &&
+            {expandedGroups.has("Custom Glyphs") &&
               orphanFolders.map((folderLabel) => {
                 const info = getLabelInfo(folderLabel);
                 // Show Tamil char if available, else fallback to English name derived from label

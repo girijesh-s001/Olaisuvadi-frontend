@@ -461,9 +461,9 @@ export function getLabelInfo(label: string): LabelInfo | null {
       char: custom.char,
       charName: custom.name,
       label: custom.label,
-      variantDescription: "Custom folder",
+      variantDescription: "Custom glyph",
       period: "",
-      group: "Custom Folders",
+      group: "Custom Glyphs",
       groupIcon: "📁",
     };
   }
@@ -475,9 +475,9 @@ export function getLabelInfo(label: string): LabelInfo | null {
       char: "📁",
       charName: folderName,
       label: label,
-      variantDescription: "Custom folder",
+      variantDescription: "Custom glyph",
       period: "",
-      group: "Custom Folders",
+      group: "Custom Glyphs",
       groupIcon: "📁",
     };
   }

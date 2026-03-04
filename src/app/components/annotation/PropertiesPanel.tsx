@@ -183,13 +183,13 @@ export function PropertiesPanel({ bbox, allBBoxes, imageMeta, onUpdate, onDelete
 
                 return (
                   <div className="space-y-2">
-                    {/* Custom Folders */}
+                    {/* Custom Glyphs */}
                     {customFolders.length > 0 && (
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5">
                           <Folder size={10} className="text-blue-400" />
                           <span className="text-xs text-slate-500" style={{ fontWeight: 600, letterSpacing: 0.3 }}>
-                            CUSTOM FOLDERS
+                            CUSTOM GLYPHS
                           </span>
                         </div>
                         <div className="flex flex-wrap gap-1.5">
