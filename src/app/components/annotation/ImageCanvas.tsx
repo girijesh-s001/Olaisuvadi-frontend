@@ -1,6 +1,17 @@
 import React, { useRef, useState, useCallback, useEffect } from "react";
 import { BoundingBox, DrawingMode } from "./types";
-import { BBOX_COLORS, getLabelInfo } from "./tamilData";
+import { BBOX_COLORS, getLabelInfo, TAMIL_GROUPS } from "./tamilData";
+
+// Create a mapping from label to Tamil character
+const LABEL_TO_TAMIL_MAP = new Map<string, string>();
+TAMIL_GROUPS.forEach((group) => {
+  group.chars.forEach((char) => {
+    LABEL_TO_TAMIL_MAP.set(char.label, char.char);
+    char.variants.forEach((variant) => {
+      LABEL_TO_TAMIL_MAP.set(variant.label, char.char);
+    });
+  });
+});
 
 interface DrawState {
   startX: number;
@@ -27,11 +38,18 @@ interface Props {
   selectedId: string | null;
   mode: DrawingMode;
   zoom: number;
-  onAddBBox: (bbox: Omit<BoundingBox, "labels" | "variant" | "joins" | "confidence">) => void;
+  // the handler receives a bbox object *without* any metadata fields that are
+  // initialized internally (labels, variant, joins, confidence, createdAt,
+  // glyphId).  AnnotationWorkspace.handleAddBBox will fill those in itself.
+  onAddBBox: (bbox: Omit<BoundingBox, "labels" | "variant" | "joins" | "confidence" | "createdAt" | "glyphId">) => void;
   onSelectBBox: (id: string | null) => void;
   onUpdateBBox: (id: string, updates: Partial<BoundingBox>) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
+  onEnterCanvas?: () => void; // called when cursor enters manuscript area
+  // deltaY from wheel event; negative values imply scroll up (zoom in),
+  // positive -> scroll down (zoom out).
+  onZoomWheel?: (deltaY: number) => void;
 }
 
 export function ImageCanvas({
@@ -47,7 +65,9 @@ export function ImageCanvas({
   onUpdateBBox,
   onDragOver,
   onDrop,
+  onEnterCanvas,
 }: Props) {
+  const scrollRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [drawState, setDrawState] = useState<DrawState>({
     startX: 0,
@@ -67,6 +87,20 @@ export function ImageCanvas({
   const colorIndexRef = useRef(0);
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const panStateRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    startScrollLeft: number;
+    startScrollTop: number;
+  }>({
+    active: false,
+    startX: 0,
+    startY: 0,
+    startScrollLeft: 0,
+    startScrollTop: 0,
+  });
 
   // Track container size for scale calculations
   useEffect(() => {
@@ -98,7 +132,22 @@ export function ImageCanvas({
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      if (mode !== "draw" || !imageSrc) return;
+      if (!imageSrc) return;
+      if (mode === "pan") {
+        const scroller = scrollRef.current;
+        if (!scroller) return;
+        e.preventDefault();
+        panStateRef.current = {
+          active: true,
+          startX: e.clientX,
+          startY: e.clientY,
+          startScrollLeft: scroller.scrollLeft,
+          startScrollTop: scroller.scrollTop,
+        };
+        setIsPanning(true);
+        return;
+      }
+      if (mode !== "draw") return;
       e.preventDefault();
       const { x, y } = getRelativePos(e);
       setDrawState({ startX: x, startY: y, currentX: x, currentY: y, active: true });
@@ -109,6 +158,16 @@ export function ImageCanvas({
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
+      if (panStateRef.current.active) {
+        const scroller = scrollRef.current;
+        if (scroller) {
+          const dx = e.clientX - panStateRef.current.startX;
+          const dy = e.clientY - panStateRef.current.startY;
+          scroller.scrollLeft = panStateRef.current.startScrollLeft - dx;
+          scroller.scrollTop = panStateRef.current.startScrollTop - dy;
+        }
+        return;
+      }
       if (drawState.active) {
         const { x, y } = getRelativePos(e);
         setDrawState((prev) => ({ ...prev, currentX: x, currentY: y }));
@@ -160,6 +219,11 @@ export function ImageCanvas({
 
   const handleMouseUp = useCallback(
     (e: React.MouseEvent) => {
+      if (panStateRef.current.active) {
+        panStateRef.current.active = false;
+        setIsPanning(false);
+        return;
+      }
       if (drawState.active) {
         const { x, y } = getRelativePos(e);
         const rawX = Math.min(drawState.startX, x);
@@ -207,9 +271,13 @@ export function ImageCanvas({
 
   return (
     <div
+      ref={scrollRef}
       className="relative overflow-auto w-full h-full bg-zinc-900 flex items-center justify-center"
       onDragOver={onDragOver}
       onDrop={onDrop}
+      onMouseEnter={() => {
+        if (onEnterCanvas) onEnterCanvas();
+      }}
     >
       {!imageSrc ? (
         <div className="flex flex-col items-center justify-center gap-4 text-zinc-400 select-none pointer-events-none">
@@ -232,14 +300,25 @@ export function ImageCanvas({
             ref={containerRef}
             className="relative select-none"
             style={{
-              cursor: mode === "draw" ? "crosshair" : mode === "select" ? "pointer" : "grab",
+              cursor:
+                mode === "draw"
+                  ? "crosshair"
+                  : mode === "select"
+                    ? "pointer"
+                    : isPanning
+                      ? "grabbing"
+                      : "grab",
             }}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
-            onMouseLeave={() =>
-              setDrawState((prev) => ({ ...prev, active: false }))
-            }
+            onMouseLeave={() => {
+              setDrawState((prev) => ({ ...prev, active: false }));
+              if (panStateRef.current.active) {
+                panStateRef.current.active = false;
+                setIsPanning(false);
+              }
+            }}
           >
             <img
               src={imageSrc}
@@ -305,12 +384,10 @@ export function ImageCanvas({
                     // Get the first label's character info
                     const firstLabelInfo = bbox.labels.length > 0 ? getLabelInfo(bbox.labels[0]) : null;
                     
-                    // For custom folders, show the folder name instead of just the emoji
-                    const displayChar = firstLabelInfo?.char || "—";
+                    // For custom folders, show only the Tamil character
                     const isCustomFolder = bbox.labels[0]?.startsWith("FOLDER_");
-                    const displayText = isCustomFolder && firstLabelInfo 
-                      ? firstLabelInfo.charName 
-                      : displayChar;
+                    const displayChar = firstLabelInfo?.char || "—";
+                    const displayText = displayChar;
                     
                     return (
                       <div
@@ -322,8 +399,8 @@ export function ImageCanvas({
                           color: "#fff",
                           padding: "2px 6px",
                           borderRadius: "4px 4px 4px 0",
-                          fontSize: isCustomFolder ? 11 : 16,
-                          fontFamily: isCustomFolder ? "sans-serif" : "'Noto Sans Tamil', serif",
+                          fontSize: 16,
+                          fontFamily: "'Noto Sans Tamil', serif",
                           whiteSpace: "nowrap",
                           fontWeight: 600,
                           lineHeight: "20px",
@@ -358,15 +435,16 @@ export function ImageCanvas({
                         fontFamily: "monospace",
                         whiteSpace: "nowrap",
                         fontWeight: 600,
-                        lineHeight: "16px",
-                        pointerEvents: "none",
-                        border: `1px solid ${bbox.color}`,
-                        borderTop: "none",
-                      }}
-                    >
-                      {bbox.id}
-                    </div>
-                  )}
+                          lineHeight: "16px",
+                          pointerEvents: "none",
+                          border: `1px solid ${bbox.color}`,
+                          borderTop: "none",
+                        }}
+                      >
+                        {bbox.glyphId}
+                      </div>
+                    )}
+
 
                   {/* Resize handles (only for selected bbox) */}
                   {isSelected && (

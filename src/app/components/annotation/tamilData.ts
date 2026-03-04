@@ -1,4 +1,4 @@
-import { TamilGroup } from "./types";
+import { TamilGroup, TamilChar } from "./types";
 
 export const BBOX_COLORS = [
   "#EF4444", "#F97316", "#EAB308", "#22C55E", "#06B6D4",
@@ -437,9 +437,38 @@ export interface LabelInfo {
   groupIcon: string;
 }
 
+// registry for custom characters created at runtime
+const customCharMap: Map<string, TamilChar> = new Map();
+
+export function registerCustomChar(char: TamilChar) {
+  customCharMap.set(char.label, char);
+}
+
+export function getCustomChar(label: string): TamilChar | undefined {
+  return customCharMap.get(label);
+}
+
+export function clearCustomChars() {
+  customCharMap.clear();
+}
+
 /** Given a label string, return all metadata about it from the Tamil character table */
 export function getLabelInfo(label: string): LabelInfo | null {
-  // Handle custom folder labels
+  // first check dynamically registered custom characters
+  if (customCharMap.has(label)) {
+    const custom = customCharMap.get(label)!;
+    return {
+      char: custom.char,
+      charName: custom.name,
+      label: custom.label,
+      variantDescription: "Custom folder",
+      period: "",
+      group: "Custom Folders",
+      groupIcon: "📁",
+    };
+  }
+
+  // Handle legacy folder labels (no metadata)
   if (label.startsWith("FOLDER_")) {
     const folderName = label.replace("FOLDER_", "").replace(/_/g, " ");
     return {

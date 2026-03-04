@@ -1,6 +1,18 @@
 import React, { useState } from "react";
-import { BoundingBox, StrikedOut } from "./types";
-import { Trash2, Copy, ChevronDown, Link2, Info, Tag, AlertTriangle, Folder } from "lucide-react";
+import { BoundingBox, StrikedOut, TamilChar } from "./types";
+import { Trash2, ChevronDown, Link2, Info, Tag, AlertTriangle, Folder } from "lucide-react";
+import { TAMIL_GROUPS, getLabelInfo } from "./tamilData";
+
+// Create a mapping from label to Tamil character
+const LABEL_TO_TAMIL_MAP = new Map<string, string>();
+TAMIL_GROUPS.forEach((group) => {
+  group.chars.forEach((char) => {
+    LABEL_TO_TAMIL_MAP.set(char.label, char.char);
+    char.variants.forEach((variant) => {
+      LABEL_TO_TAMIL_MAP.set(variant.label, char.char);
+    });
+  });
+});
 
 interface Props {
   bbox: BoundingBox | null;
@@ -8,7 +20,7 @@ interface Props {
   imageMeta: { image_id: string; naturalWidth: number; naturalHeight: number; dpi: number } | null;
   onUpdate: (id: string, updates: Partial<BoundingBox>) => void;
   onDelete: (id: string) => void;
-  onDuplicate: (id: string) => void;
+  customChars?: TamilChar[];
 }
 
 const STRIKED_OPTIONS: StrikedOut[] = ["none", "above line", "below line", "after", "before"];
@@ -62,7 +74,7 @@ function Section({ title, icon, children }: { title: string; icon: React.ReactNo
   );
 }
 
-export function PropertiesPanel({ bbox, allBBoxes, imageMeta, onUpdate, onDelete, onDuplicate }: Props) {
+export function PropertiesPanel({ bbox, allBBoxes, imageMeta, onUpdate, onDelete, customChars = [] }: Props) {
   if (!bbox) {
     return (
       <div
@@ -121,16 +133,9 @@ export function PropertiesPanel({ bbox, allBBoxes, imageMeta, onUpdate, onDelete
         />
         <div className="flex-1 min-w-0">
           <div className="text-xs text-slate-200 font-mono truncate" style={{ fontWeight: 600 }}>
-            {bbox.id}
+            {bbox.glyphId}
           </div>
         </div>
-        <button
-          onClick={() => onDuplicate(bbox.id)}
-          title="Duplicate"
-          className="text-slate-500 hover:text-slate-300 p-1 rounded hover:bg-slate-800 transition-colors"
-        >
-          <Copy size={13} />
-        </button>
         <button
           onClick={() => onDelete(bbox.id)}
           title="Delete"
@@ -189,7 +194,9 @@ export function PropertiesPanel({ bbox, allBBoxes, imageMeta, onUpdate, onDelete
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {customFolders.map((lbl) => {
-                            const folderName = lbl.replace("FOLDER_", "").replace(/_/g, " ");
+                            // Prefer Tamil character from registered custom data
+                            const info = getLabelInfo(lbl);
+                            const displayLabel = info?.char || lbl.replace("FOLDER_", "").replace(/_/g, " ");
                             return (
                               <div
                                 key={lbl}
@@ -201,7 +208,7 @@ export function PropertiesPanel({ bbox, allBBoxes, imageMeta, onUpdate, onDelete
                                 }}
                               >
                                 <Folder size={11} />
-                                <span style={{ fontWeight: 600 }}>{folderName}</span>
+                                <span style={{ fontWeight: 600, fontFamily: "'Noto Sans Tamil', serif", fontSize: 16 }}>{displayLabel}</span>
                                 <button
                                   onClick={() =>
                                     onUpdate(bbox.id, { labels: bbox.labels.filter((l) => l !== lbl) })
@@ -330,28 +337,32 @@ export function PropertiesPanel({ bbox, allBBoxes, imageMeta, onUpdate, onDelete
           <div>
             <label className="text-xs text-slate-500 block mb-1">Touching IDs</label>
             <div className="flex flex-wrap gap-1 mb-1.5">
-              {bbox.joins.touching_ids.map((tid) => (
-                <div
-                  key={tid}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono"
-                  style={{ background: "#1e293b", color: "#6ee7b7", border: "1px solid #1d4035" }}
-                >
-                  {tid}
-                  <button
-                    onClick={() =>
-                      onUpdate(bbox.id, {
-                        joins: {
-                          ...bbox.joins,
-                          touching_ids: bbox.joins.touching_ids.filter((t) => t !== tid),
-                        },
-                      })
-                    }
-                    className="text-slate-500 hover:text-red-400"
+              {bbox.joins.touching_ids.map((tid) => {
+                const touchingBox = allBBoxes.find((b) => b.id === tid);
+                const glyphId = touchingBox ? touchingBox.glyphId : tid;
+                return (
+                  <div
+                    key={tid}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono"
+                    style={{ background: "#1e293b", color: "#6ee7b7", border: "1px solid #1d4035" }}
                   >
-                    ×
-                  </button>
-                </div>
-              ))}
+                    {glyphId}
+                    <button
+                      onClick={() =>
+                        onUpdate(bbox.id, {
+                          joins: {
+                            ...bbox.joins,
+                            touching_ids: bbox.joins.touching_ids.filter((t) => t !== tid),
+                          },
+                        })
+                      }
+                      className="text-slate-500 hover:text-red-400"
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
             </div>
             <select
               value=""
@@ -376,7 +387,7 @@ export function PropertiesPanel({ bbox, allBBoxes, imageMeta, onUpdate, onDelete
               <option value="">+ Link to glyph…</option>
               {otherBoxes.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.id} {b.labels[0] ? `(${b.labels[0]})` : ""}
+                  {b.glyphId}
                 </option>
               ))}
             </select>

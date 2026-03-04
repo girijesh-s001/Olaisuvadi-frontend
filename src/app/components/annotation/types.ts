@@ -23,6 +23,8 @@ export interface BoundingBox {
   variant: BBoxVariant;
   joins: BBoxJoins;
   confidence: number;
+  createdAt: Date;
+  glyphId: string;
 }
 
 export interface ImageMeta {
@@ -63,6 +65,8 @@ export interface ImageLabel {
 export interface ExportData {
   image_label: ImageLabel;
   annotations: GlyphAnnotation[];
+  // any user‑defined characters/folders created during annotation
+  custom_chars?: TamilChar[];
 }
 
 export interface TamilCharVariant {

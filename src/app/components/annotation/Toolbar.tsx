@@ -26,7 +26,7 @@ interface Props {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomReset: () => void;
-  onExportJSON: () => void;
+  onExportYAML: () => void;
   onExportImages: () => void;
   onClearAll: () => void;
   onDeleteSelected: () => void;
@@ -94,7 +94,7 @@ export function Toolbar({
   onZoomIn,
   onZoomOut,
   onZoomReset,
-  onExportJSON,
+  onExportYAML,
   onExportImages,
   onClearAll,
   onDeleteSelected,
@@ -146,17 +146,17 @@ export function Toolbar({
 
       {/* Drawing tools */}
       <ToolBtn
-        icon={<MousePointer2 size={14} />}
-        label="Select"
-        active={mode === "select"}
-        onClick={() => onModeChange("select")}
-        disabled={!hasImage}
-      />
-      <ToolBtn
         icon={<Square size={14} />}
         label="Draw BBox"
         active={mode === "draw"}
         onClick={() => onModeChange("draw")}
+        disabled={!hasImage}
+      />
+      <ToolBtn
+        icon={<MousePointer2 size={14} />}
+        label="Select"
+        active={mode === "select"}
+        onClick={() => onModeChange("select")}
         disabled={!hasImage}
       />
       <ToolBtn
@@ -218,8 +218,8 @@ export function Toolbar({
       />
       <ToolBtn
         icon={<FileJson size={14} />}
-        label="Export JSON"
-        onClick={onExportJSON}
+        label="Export YAML"
+        onClick={onExportYAML}
         disabled={!hasImage}
       />
       <ToolBtn

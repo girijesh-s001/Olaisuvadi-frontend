@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { TamilChar, TamilCharVariant, BoundingBox } from "./types";
-import { TAMIL_GROUPS } from "./tamilData";
-import { ChevronDown, ChevronRight, Clock, FolderPlus, Folder } from "lucide-react";
+import { TAMIL_GROUPS, getLabelInfo } from "./tamilData";
+import { ChevronDown, ChevronRight, Clock, FolderPlus, Folder, Trash2 } from "lucide-react";
 
 interface Props {
   selectedBBoxId: string | null;
@@ -9,6 +9,52 @@ interface Props {
   allBBoxes: BoundingBox[];
   onAddLabel: (label: string) => void;
   onRemoveLabel: (label: string) => void;
+  customChars: TamilChar[];              // user-defined characters/folders
+  onCreateCustomChar: (char: TamilChar) => void; // notify parent of new entry
+  onDeleteCustomChar: (label: string) => void;
+}
+
+function normalizeText(value: string): string {
+  return value.toLowerCase().trim();
+}
+
+function isSubsequenceMatch(query: string, target: string): boolean {
+  let qi = 0;
+  for (let ti = 0; ti < target.length && qi < query.length; ti += 1) {
+    if (target[ti] === query[qi]) qi += 1;
+  }
+  return qi === query.length;
+}
+
+function levenshteinDistance(a: string, b: string): number {
+  const dp = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+  for (let i = 0; i <= a.length; i += 1) dp[i][0] = i;
+  for (let j = 0; j <= b.length; j += 1) dp[0][j] = j;
+
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,     // deletion
+        dp[i][j - 1] + 1,     // insertion
+        dp[i - 1][j - 1] + cost // substitution
+      );
+    }
+  }
+  return dp[a.length][b.length];
+}
+
+function fuzzyMatch(queryRaw: string, targetRaw: string): boolean {
+  const query = normalizeText(queryRaw);
+  const target = normalizeText(targetRaw);
+  if (!query) return true;
+  if (!target) return false;
+  if (target.includes(query)) return true;
+  if (isSubsequenceMatch(query, target)) return true;
+
+  // Small typo tolerance
+  const maxDistance = query.length <= 4 ? 1 : 2;
+  return levenshteinDistance(query, target) <= maxDistance;
 }
 
 function VariantBadge({
@@ -45,12 +91,14 @@ function CharRow({
   onAddLabel,
   onRemoveLabel,
   disabled,
+  onDelete,
 }: {
   char: TamilChar;
   selectedLabels: string[];
   onAddLabel: (label: string) => void;
   onRemoveLabel: (label: string) => void;
   disabled: boolean;
+  onDelete?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const mainSelected = selectedLabels.includes(char.label);
@@ -96,6 +144,18 @@ function CharRow({
             </svg>
           </div>
         )}
+        {onDelete && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="text-slate-500 hover:text-red-400 transition-colors"
+            title="Delete custom folder"
+          >
+            <Trash2 size={13} />
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -135,13 +195,15 @@ function CharRow({
   );
 }
 
-export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAddLabel, onRemoveLabel }: Props) {
+export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAddLabel, onRemoveLabel, customChars, onCreateCustomChar, onDeleteCustomChar }: Props) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     new Set([TAMIL_GROUPS[0].group, TAMIL_GROUPS[1].group])
   );
   const [search, setSearch] = useState("");
   const [showFolderInput, setShowFolderInput] = useState(false);
-  const [customFolderName, setCustomFolderName] = useState("");
+  // inputs for custom folder creation
+  const [customFolderTamilChar, setCustomFolderTamilChar] = useState("");
+  const [customFolderSound, setCustomFolderSound] = useState("");
 
   const toggleGroup = (group: string) => {
     setExpandedGroups((prev) => {
@@ -156,41 +218,53 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
 
   const filterChar = (char: TamilChar) => {
     if (!search) return true;
-    const q = search.toLowerCase();
     return (
-      char.char.includes(search) ||
-      char.name.toLowerCase().includes(q) ||
-      char.label.toLowerCase().includes(q) ||
-      char.variants.some((v) => v.label.toLowerCase().includes(q))
+      fuzzyMatch(search, char.char) ||
+      fuzzyMatch(search, char.name) ||
+      fuzzyMatch(search, char.label) ||
+      char.variants.some((v) => fuzzyMatch(search, v.label) || fuzzyMatch(search, v.description))
     );
   };
 
   const handleCreateCustomFolder = () => {
-    if (!customFolderName.trim() || !selectedBBoxId) return;
-    
-    // Create a custom label with folder prefix
-    const customLabel = `FOLDER_${customFolderName.trim().replace(/\s+/g, "_").toUpperCase()}`;
-    onAddLabel(customLabel);
-    
-    // Reset
-    setCustomFolderName("");
+    if (!customFolderTamilChar.trim() || !customFolderSound.trim()) return;
+
+    // generate label from the english sound (unique, uppercase)
+    const customLabel = `FOLDER_${customFolderSound.trim().replace(/\s+/g, "_").toUpperCase()}`;
+
+    const newChar: TamilChar = {
+      char: customFolderTamilChar.trim(),
+      name: customFolderSound.trim(),
+      label: customLabel,
+      variants: [],
+    };
+    onCreateCustomChar(newChar);
+    if (selectedBBoxId) {
+      onAddLabel(customLabel);
+    }
+
+    // Reset inputs and close
+    setCustomFolderTamilChar("");
+    setCustomFolderSound("");
     setShowFolderInput(false);
   };
 
-  // Extract all unique custom folders from all bboxes
-  const allCustomFolders = React.useMemo(() => {
-    const folderSet = new Set<string>();
+  // Extract any folder labels that were applied to bboxes but for which we
+  // don’t yet have metadata (e.g. imported annotations). They will remain in a
+  // separate section with a folder icon.
+  const orphanFolders = React.useMemo(() => {
+    const set = new Set<string>();
     if (allBBoxes && Array.isArray(allBBoxes)) {
       allBBoxes.forEach((bbox) => {
         bbox.labels.forEach((label) => {
-          if (label.startsWith("FOLDER_")) {
-            folderSet.add(label);
+          if (label.startsWith("FOLDER_") && !customChars.find((c) => c.label === label)) {
+            set.add(label);
           }
         });
       });
     }
-    return Array.from(folderSet).sort();
-  }, [allBBoxes]);
+    return Array.from(set).sort();
+  }, [allBBoxes, customChars]);
 
   return (
     <div
@@ -223,19 +297,18 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
         )}
       </div>
 
-      {/* Custom Folder Section */}
+      {/* Custom Folder Section - form to create new metadata-rich folder */}
       <div className="px-3 py-2" style={{ borderBottom: "1px solid #1e293b", background: "#0a1525" }}>
         {!showFolderInput ? (
           <button
             onClick={() => setShowFolderInput(true)}
-            disabled={disabled}
             className="w-full flex items-center gap-2 px-2.5 py-2 rounded text-xs transition-colors"
             style={{
-              background: disabled ? "#0f172a" : "#1e3a5f",
-              color: disabled ? "#475569" : "#60a5fa",
-              border: `1px solid ${disabled ? "#1e293b" : "#3B82F6"}`,
-              cursor: disabled ? "not-allowed" : "pointer",
-              opacity: disabled ? 0.5 : 1,
+              background: "#1e3a5f",
+              color: "#60a5fa",
+              border: "1px solid #3B82F6",
+              cursor: "pointer",
+              opacity: 1,
             }}
           >
             <FolderPlus size={14} />
@@ -251,16 +324,9 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
             </div>
             <input
               autoFocus
-              value={customFolderName}
-              onChange={(e) => setCustomFolderName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreateCustomFolder();
-                if (e.key === "Escape") {
-                  setShowFolderInput(false);
-                  setCustomFolderName("");
-                }
-              }}
-              placeholder="Enter folder name (e.g., TA_OLD_FORM)"
+              value={customFolderTamilChar}
+              onChange={(e) => setCustomFolderTamilChar(e.target.value)}
+              placeholder="Tamil character (e.g. அ)"
               className="w-full px-2.5 py-1.5 rounded text-xs outline-none"
               style={{
                 background: "#0f172a",
@@ -268,24 +334,44 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
                 color: "#e2e8f0",
               }}
             />
+            <input
+              value={customFolderSound}
+              onChange={(e) => setCustomFolderSound(e.target.value)}
+              placeholder="English sound/name"
+              className="w-full px-2.5 py-1.5 rounded text-xs outline-none"
+              style={{
+                background: "#0f172a",
+                border: "1px solid #3B82F6",
+                color: "#e2e8f0",
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleCreateCustomFolder();
+                if (e.key === "Escape") {
+                  setShowFolderInput(false);
+                  setCustomFolderTamilChar("");
+                  setCustomFolderSound("");
+                }
+              }}
+            />
             <div className="flex gap-2">
               <button
                 onClick={handleCreateCustomFolder}
-                disabled={!customFolderName.trim()}
+                disabled={!customFolderTamilChar.trim() || !customFolderSound.trim()}
                 className="flex-1 px-2 py-1.5 rounded text-xs transition-colors"
                 style={{
-                  background: customFolderName.trim() ? "#3B82F6" : "#1e293b",
-                  color: customFolderName.trim() ? "#fff" : "#64748b",
+                  background: customFolderTamilChar.trim() && customFolderSound.trim() ? "#3B82F6" : "#1e293b",
+                  color: customFolderTamilChar.trim() && customFolderSound.trim() ? "#fff" : "#64748b",
                   fontWeight: 600,
-                  cursor: customFolderName.trim() ? "pointer" : "not-allowed",
+                  cursor: customFolderTamilChar.trim() && customFolderSound.trim() ? "pointer" : "not-allowed",
                 }}
               >
-                Create & Assign
+                {selectedBBoxId ? "Create & Assign" : "Create"}
               </button>
               <button
                 onClick={() => {
                   setShowFolderInput(false);
-                  setCustomFolderName("");
+                  setCustomFolderTamilChar("");
+                  setCustomFolderSound("");
                 }}
                 className="px-2 py-1.5 rounded text-xs transition-colors"
                 style={{
@@ -298,7 +384,8 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
               </button>
             </div>
             <div className="text-xs text-slate-600">
-              Press Enter to create, Esc to cancel
+              Fill both fields, Enter to create, Esc to cancel
+              {!selectedBBoxId ? " (select a box to auto-assign)" : ""}
             </div>
           </div>
         )}
@@ -306,8 +393,28 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
 
       {/* Character list */}
       <div className="flex-1 overflow-y-auto px-2 py-2" style={{ scrollbarWidth: "thin", scrollbarColor: "#334155 transparent" }}>
-        {/* Custom Folders */}
-        {allCustomFolders.length > 0 && (
+        {/* Custom folders added by user – treated just like regular characters */}
+        {customChars.length > 0 && (
+          <div className="mb-3">
+            <div className="text-xs text-slate-400 mb-1">Custom Folders</div>
+            {customChars.filter(filterChar).map((char) => (
+              <CharRow
+                key={char.label}
+                char={char}
+                selectedLabels={selectedLabels}
+                onAddLabel={onAddLabel}
+                onRemoveLabel={onRemoveLabel}
+                disabled={disabled}
+                onDelete={() => {
+                  const ok = window.confirm(`Delete custom folder "${char.name}"?`);
+                  if (ok) onDeleteCustomChar(char.label);
+                }}
+              />
+            ))}
+          </div>
+        )}
+        {/* Any orphan folder labels (no metadata) still rendered separately */}
+        {orphanFolders.length > 0 && (
           <div className="mb-3">
             <button
               onClick={() => toggleGroup("Custom Folders")}
@@ -318,7 +425,7 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
               <span className="text-xs text-slate-400 flex-1 text-left" style={{ fontWeight: 600 }}>
                 Custom Folders
               </span>
-              <span className="text-xs text-slate-600">({allCustomFolders.length})</span>
+              <span className="text-xs text-slate-600">({orphanFolders.length})</span>
               {expandedGroups.has("Custom Folders") ? (
                 <ChevronDown size={12} className="text-slate-500" />
               ) : (
@@ -326,8 +433,10 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
               )}
             </button>
             {expandedGroups.has("Custom Folders") &&
-              allCustomFolders.map((folderLabel) => {
-                const folderName = folderLabel.replace("FOLDER_", "").replace(/_/g, " ");
+              orphanFolders.map((folderLabel) => {
+                const info = getLabelInfo(folderLabel);
+                // Show Tamil char if available, else fallback to English name derived from label
+                const displayName = info?.char || folderLabel.replace("FOLDER_", "").replace(/_/g, " ");
                 const isSelected = selectedLabels.includes(folderLabel);
                 return (
                   <div
@@ -352,8 +461,11 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
                     >
                       <Folder size={18} className="text-blue-400 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs text-slate-300" style={{ fontWeight: 500 }}>
-                          {folderName}
+                        <div
+                          className="text-xs text-slate-300"
+                          style={{ fontWeight: 500, fontFamily: "'Noto Sans Tamil', serif", fontSize: 18 }}
+                        >
+                          {displayName}
                         </div>
                         <div className="text-xs text-slate-500 font-mono">{folderLabel}</div>
                       </div>

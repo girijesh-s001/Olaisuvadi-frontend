@@ -1,11 +1,12 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import JSZip from "jszip";
-import { BoundingBox, DrawingMode, ExportData, GlyphAnnotation, ImageMeta } from "./types";
+import { BoundingBox, DrawingMode, ExportData, GlyphAnnotation, ImageMeta, TamilChar } from "./types";
 import { ImageCanvas } from "./ImageCanvas";
 import { CharacterPanel } from "./CharacterPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { Toolbar } from "./Toolbar";
-import { TAMIL_GROUPS } from "./tamilData";
+import { CharacterSearchModal } from "./CharacterSearchModal";
+import { TAMIL_GROUPS, registerCustomChar, getCustomChar, clearCustomChars } from "./tamilData";
 
 // Create a mapping from label to Tamil character
 const LABEL_TO_TAMIL_MAP = new Map<string, string>();
@@ -43,15 +44,108 @@ function estimateDPI(width: number, height: number): number {
   return 72;
 }
 
+function toYAML(value: unknown, indent = 0): string {
+  const pad = "  ".repeat(indent);
+
+  if (value === null) return "null";
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (typeof value === "string") {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return "[]";
+    return value
+      .map((item) => {
+        if (
+          item === null ||
+          typeof item === "number" ||
+          typeof item === "boolean" ||
+          typeof item === "string"
+        ) {
+          return `${pad}- ${toYAML(item, indent + 1)}`;
+        }
+        return `${pad}-\n${toYAML(item, indent + 1)}`;
+      })
+      .join("\n");
+  }
+
+  const obj = value as Record<string, unknown>;
+  const entries = Object.entries(obj);
+  if (entries.length === 0) return "{}";
+
+  return entries
+    .map(([key, val]) => {
+      if (val === undefined) return null;
+      if (
+        val === null ||
+        typeof val === "number" ||
+        typeof val === "boolean" ||
+        typeof val === "string"
+      ) {
+        return `${pad}${key}: ${toYAML(val, indent + 1)}`;
+      }
+      return `${pad}${key}:\n${toYAML(val, indent + 1)}`;
+    })
+    .filter((line): line is string => line !== null)
+    .join("\n");
+}
+
 export function AnnotationWorkspace() {
   const [imageMeta, setImageMeta] = useState<ImageMeta | null>(null);
   const [bboxes, setBboxes] = useState<BoundingBox[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<DrawingMode>("draw");
   const [zoom, setZoom] = useState(1);
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [newBoxId, setNewBoxId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const undoStackRef = useRef<BoundingBox[][]>([]);
+  const redoStackRef = useRef<BoundingBox[][]>([]);
+
+  // user-defined characters/folders that should persist across sessions
+  const [customChars, setCustomChars] = useState<TamilChar[]>(() => {
+    try {
+      const stored = localStorage.getItem("user_custom_chars");
+      if (stored) return JSON.parse(stored) as TamilChar[];
+    } catch { }
+    return [];
+  });
 
   const selectedBbox = bboxes.find((b) => b.id === selectedId) ?? null;
+
+  const cloneBBoxes = useCallback((boxes: BoundingBox[]): BoundingBox[] => {
+    return boxes.map((b) => ({
+      ...b,
+      labels: [...b.labels],
+      variant: { ...b.variant },
+      joins: { ...b.joins, touching_ids: [...b.joins.touching_ids] },
+      createdAt: new Date(b.createdAt),
+    }));
+  }, []);
+
+  const pushUndoSnapshot = useCallback(
+    (snapshot: BoundingBox[]) => {
+      undoStackRef.current.push(cloneBBoxes(snapshot));
+      if (undoStackRef.current.length > 100) {
+        undoStackRef.current.shift();
+      }
+      redoStackRef.current = [];
+    },
+    [cloneBBoxes]
+  );
+
+  const updateBBoxesWithHistory = useCallback(
+    (updater: (prev: BoundingBox[]) => BoundingBox[]) => {
+      setBboxes((prev) => {
+        const next = updater(prev);
+        if (next === prev) return prev;
+        pushUndoSnapshot(prev);
+        return next;
+      });
+    },
+    [pushUndoSnapshot]
+  );
 
   // Handle image load
   const loadImageFile = useCallback((file: File) => {
@@ -69,6 +163,8 @@ export function AnnotationWorkspace() {
       };
       setImageMeta(meta);
       setBboxes([]);
+      undoStackRef.current = [];
+      redoStackRef.current = [];
       setSelectedId(null);
       setZoom(1);
     };
@@ -93,29 +189,35 @@ export function AnnotationWorkspace() {
 
   // BBox management
   const handleAddBBox = useCallback(
-    (bbox: Omit<BoundingBox, "labels" | "variant" | "joins" | "confidence">) => {
+    (bbox: Omit<BoundingBox, "labels" | "variant" | "joins" | "confidence" | "createdAt" | "glyphId">) => {
+      const created = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const tstr = `${pad(created.getHours())}_${pad(created.getMinutes())}_${pad(created.getSeconds())}`;
       const newBBox: BoundingBox = {
         ...bbox,
         labels: [],
         variant: { ...DEFAULT_VARIANT },
         joins: { ...DEFAULT_JOINS, touching_ids: [] },
         confidence: 1.0,
+        createdAt: created,
+        glyphId: `g_unlabeled_${tstr}`,
       };
-      setBboxes((prev) => [...prev, newBBox]);
+      updateBBoxesWithHistory((prev) => [...prev, newBBox]);
       setSelectedId(newBBox.id);
-      setMode("select");
+      setNewBoxId(newBBox.id);
+      setShowSearchModal(true);
     },
-    []
+    [updateBBoxesWithHistory]
   );
 
   const handleUpdateBBox = useCallback((id: string, updates: Partial<BoundingBox>) => {
-    setBboxes((prev) =>
+    updateBBoxesWithHistory((prev) =>
       prev.map((b) => (b.id === id ? { ...b, ...updates } : b))
     );
-  }, []);
+  }, [updateBBoxesWithHistory]);
 
   const handleDeleteBBox = useCallback((id: string) => {
-    setBboxes((prev) => {
+    updateBBoxesWithHistory((prev) => {
       const remaining = prev.filter((b) => b.id !== id);
       // Clean up touching_ids references
       return remaining.map((b) => ({
@@ -127,52 +229,120 @@ export function AnnotationWorkspace() {
       }));
     });
     setSelectedId(null);
-  }, []);
-
-  const handleDuplicateBBox = useCallback((id: string) => {
-    setBboxes((prev) => {
-      const original = prev.find((b) => b.id === id);
-      if (!original) return prev;
-      const newId = `g_${Date.now().toString(36)}_${String(prev.length).padStart(3, "0")}`;
-      const duplicate: BoundingBox = {
-        ...original,
-        id: newId,
-        x: original.x + 20,
-        y: original.y + 20,
-        joins: { ...original.joins, touching_ids: [] },
-      };
-      return [...prev, duplicate];
-    });
-  }, []);
+  }, [updateBBoxesWithHistory]);
 
   // Labels
+  // helper to build glyph id from a label and creation time
+  const buildGlyphId = (label: string | null, createdAt: Date) => {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const hours = pad(createdAt.getHours());
+    const minutes = pad(createdAt.getMinutes());
+    const seconds = pad(createdAt.getSeconds());
+    let charName: string;
+    if (!label) {
+      charName = "unlabeled";
+    } else if (label.startsWith("FOLDER_")) {
+      // custom folder: use the Tamil character from the registry
+      const customChar = getCustomChar(label);
+      charName = customChar ? customChar.char : label.replace("FOLDER_", "");
+    } else {
+      charName = LABEL_TO_TAMIL_MAP.get(label) || label;
+    }
+    return `g_${charName}_${hours}_${minutes}_${seconds}`;
+  };
+
   const handleAddLabel = useCallback(
     (label: string) => {
       if (!selectedId) return;
-      setBboxes((prev) =>
-        prev.map((b) =>
-          b.id === selectedId && !b.labels.includes(label)
-            ? { ...b, labels: [...b.labels, label] }
-            : b
-        )
+      updateBBoxesWithHistory((prev) =>
+        prev.map((b) => {
+          if (b.id === selectedId && !b.labels.includes(label)) {
+            const newLabels = [...b.labels, label];
+            const newGlyph = buildGlyphId(newLabels[0] || null, b.createdAt);
+            return { ...b, labels: newLabels, glyphId: newGlyph };
+          }
+          return b;
+        })
       );
     },
-    [selectedId]
+    [selectedId, updateBBoxesWithHistory]
   );
 
   const handleRemoveLabel = useCallback(
     (label: string) => {
       if (!selectedId) return;
-      setBboxes((prev) =>
-        prev.map((b) =>
-          b.id === selectedId
-            ? { ...b, labels: b.labels.filter((l) => l !== label) }
-            : b
-        )
+      updateBBoxesWithHistory((prev) =>
+        prev.map((b) => {
+          if (b.id === selectedId) {
+            const newLabels = b.labels.filter((l) => l !== label);
+            const newGlyph = buildGlyphId(newLabels[0] || null, b.createdAt);
+            return { ...b, labels: newLabels, glyphId: newGlyph };
+          }
+          return b;
+        })
       );
     },
-    [selectedId]
+    [selectedId, updateBBoxesWithHistory]
   );
+
+  const handleDeleteCustomChar = (label: string) => {
+    setCustomChars((prev) => prev.filter((c) => c.label !== label));
+    updateBBoxesWithHistory((prev) =>
+      prev.map((b) => {
+        if (!b.labels.includes(label)) return b;
+        const nextLabels = b.labels.filter((l) => l !== label);
+        const nextGlyphId = buildGlyphId(nextLabels[0] || null, b.createdAt);
+        return { ...b, labels: nextLabels, glyphId: nextGlyphId };
+      })
+    );
+  };
+
+  const handleSelectCharacterFromSearch = useCallback(
+    (label: string) => {
+      if (!newBoxId) return;
+      updateBBoxesWithHistory((prev) =>
+        prev.map((b) => {
+          if (b.id === newBoxId && !b.labels.includes(label)) {
+            const newLabels = [...b.labels, label];
+            const newGlyph = buildGlyphId(newLabels[0] || null, b.createdAt);
+            return { ...b, labels: newLabels, glyphId: newGlyph };
+          }
+          return b;
+        })
+      );
+      setShowSearchModal(false);
+      setNewBoxId(null);
+    },
+    [newBoxId, updateBBoxesWithHistory]
+  );
+
+  const handleUndo = useCallback(() => {
+    const snapshot = undoStackRef.current.pop();
+    if (!snapshot) return;
+    setBboxes((prev) => {
+      redoStackRef.current.push(cloneBBoxes(prev));
+      return cloneBBoxes(snapshot);
+    });
+    setShowSearchModal(false);
+    setNewBoxId(null);
+  }, [cloneBBoxes]);
+
+  const handleRedo = useCallback(() => {
+    const snapshot = redoStackRef.current.pop();
+    if (!snapshot) return;
+    setBboxes((prev) => {
+      undoStackRef.current.push(cloneBBoxes(prev));
+      return cloneBBoxes(snapshot);
+    });
+    setShowSearchModal(false);
+    setNewBoxId(null);
+  }, [cloneBBoxes]);
+
+  useEffect(() => {
+    if (selectedId && !bboxes.some((b) => b.id === selectedId)) {
+      setSelectedId(null);
+    }
+  }, [bboxes, selectedId]);
 
   // Zoom
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.25, 4));
@@ -185,7 +355,20 @@ export function AnnotationWorkspace() {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "d" || e.key === "D") setMode("draw");
       if (e.key === "s" || e.key === "S") setMode("select");
-      if (e.key === "h" || e.key === "H") setMode("pan");
+      if (e.key === "p" || e.key === "P") setMode("pan");
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        handleUndo();
+        return;
+      }
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        (e.key === "y" || e.key === "Y" || ((e.key === "z" || e.key === "Z") && e.shiftKey))
+      ) {
+        e.preventDefault();
+        handleRedo();
+        return;
+      }
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedId) handleDeleteBBox(selectedId);
       }
@@ -196,10 +379,10 @@ export function AnnotationWorkspace() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [selectedId, handleDeleteBBox]);
+  }, [selectedId, handleDeleteBBox, handleUndo, handleRedo]);
 
-  // Export JSON
-  const handleExportJSON = () => {
+  // Export YAML
+  const handleExportYAML = () => {
     if (!imageMeta) return;
 
     const imageLabel = {
@@ -209,12 +392,29 @@ export function AnnotationWorkspace() {
       dpi: imageMeta.dpi,
     };
 
-    const annotations: GlyphAnnotation[] = bboxes.map((b, idx) => ({
-      glyph_id: `g_${imageMeta.image_id}_${String(idx).padStart(3, "0")}`,
+    // Get current time in HH_MM_SS format
+    const now = new Date();
+    const hours = String(now.getHours()).padStart(2, "0");
+    const minutes = String(now.getMinutes()).padStart(2, "0");
+    const seconds = String(now.getSeconds()).padStart(2, "0");
+    const timeString = `${hours}_${minutes}_${seconds}`;
+
+    const annotations: GlyphAnnotation[] = bboxes.map((b) => ({
+      glyph_id: b.glyphId,
       image_id: imageMeta.image_id,
       bbox: [b.x, b.y, b.w, b.h],
       mask: null,
-      labels: b.labels,
+      // convert labels to tamil characters where possible
+      labels: b.labels.map((l) => {
+        // Standard Tamil character label
+        if (LABEL_TO_TAMIL_MAP.has(l)) return LABEL_TO_TAMIL_MAP.get(l)!;
+        // Custom folder — use the Tamil character entered by the user
+        if (l.startsWith("FOLDER_")) {
+          const customChar = getCustomChar(l);
+          if (customChar) return customChar.char;
+        }
+        return l;
+      }),
       variant: b.variant,
       joins: b.joins,
       confidence: b.confidence,
@@ -223,13 +423,15 @@ export function AnnotationWorkspace() {
     const exportData: ExportData = {
       image_label: imageLabel,
       annotations,
+      ...(customChars.length > 0 ? { custom_chars: customChars } : {}),
     };
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+    const yaml = toYAML(exportData);
+    const blob = new Blob([yaml], { type: "text/yaml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${imageMeta.image_id}_annotations.json`;
+    a.download = `${imageMeta.image_id}_annotations.yaml`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -241,7 +443,7 @@ export function AnnotationWorkspace() {
     // Load the original image
     const img = new window.Image();
     img.crossOrigin = "anonymous";
-    
+
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve();
       img.onerror = reject;
@@ -258,7 +460,7 @@ export function AnnotationWorkspace() {
     // Process each bounding box
     for (let idx = 0; idx < bboxes.length; idx++) {
       const bbox = bboxes[idx];
-      
+
       // Set canvas size to bbox size
       canvas.width = bbox.w;
       canvas.height = bbox.h;
@@ -277,21 +479,22 @@ export function AnnotationWorkspace() {
 
       if (blob) {
         const filename = `${bbox.id}.png`;
-        
+
         // If bbox has labels, save in each label folder
         if (bbox.labels.length > 0) {
           for (const label of bbox.labels) {
             // Map label to Tamil character or use label as-is for custom folders
             let folderName = label;
-            
+
             // If it's a standard Tamil character label, convert to Tamil character
             if (LABEL_TO_TAMIL_MAP.has(label)) {
               folderName = LABEL_TO_TAMIL_MAP.get(label)!;
             } else if (label.startsWith("FOLDER_")) {
-              // For custom folders, remove the FOLDER_ prefix
-              folderName = label.replace("FOLDER_", "");
+              // For custom folders, use the Tamil character entered by the user
+              const customChar = getCustomChar(label);
+              folderName = customChar ? customChar.char : label.replace("FOLDER_", "").replace(/_/g, " ");
             }
-            
+
             const folderPath = `${folderName}/${filename}`;
             zip.file(folderPath, blob);
           }
@@ -312,6 +515,31 @@ export function AnnotationWorkspace() {
     URL.revokeObjectURL(url);
   };
 
+  // persist custom chars whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem("user_custom_chars", JSON.stringify(customChars));
+    } catch { }
+
+    // keep registry aligned with current custom folder state
+    clearCustomChars();
+    customChars.forEach((c) => registerCustomChar(c));
+  }, [customChars]);
+
+  // Warn user before refresh/close when work exists.
+  useEffect(() => {
+    const hasWork = !!imageMeta || bboxes.length > 0;
+    if (!hasWork) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [imageMeta, bboxes.length]);
+
   return (
     <div
       className="flex flex-col h-screen w-full overflow-hidden"
@@ -329,10 +557,10 @@ export function AnnotationWorkspace() {
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
         onZoomReset={handleZoomReset}
-        onExportJSON={handleExportJSON}
+        onExportYAML={handleExportYAML}
         onExportImages={handleExportImages}
         onClearAll={() => {
-          setBboxes([]);
+          updateBBoxesWithHistory(() => []);
           setSelectedId(null);
         }}
         onDeleteSelected={() => selectedId && handleDeleteBBox(selectedId)}
@@ -349,6 +577,9 @@ export function AnnotationWorkspace() {
             allBBoxes={bboxes}
             onAddLabel={handleAddLabel}
             onRemoveLabel={handleRemoveLabel}
+            customChars={customChars}
+            onCreateCustomChar={(c) => setCustomChars((prev) => [...prev, c])}
+            onDeleteCustomChar={handleDeleteCustomChar}
           />
         </div>
 
@@ -367,6 +598,11 @@ export function AnnotationWorkspace() {
             onUpdateBBox={handleUpdateBBox}
             onDragOver={(e) => e.preventDefault()}
             onDrop={handleFileDrop}
+            onZoomWheel={(deltaY) => {
+              // deltaY is positive for scroll-down; zoom out.
+              if (deltaY < 0) handleZoomIn();
+              else if (deltaY > 0) handleZoomOut();
+            }}
           />
         </div>
 
@@ -378,7 +614,7 @@ export function AnnotationWorkspace() {
             imageMeta={imageMeta}
             onUpdate={handleUpdateBBox}
             onDelete={handleDeleteBBox}
-            onDuplicate={handleDuplicateBBox}
+            customChars={customChars}
           />
         </div>
       </div>
@@ -390,7 +626,10 @@ export function AnnotationWorkspace() {
       >
         <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>D</kbd> Draw</span>
         <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>S</kbd> Select</span>
+        <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>P</kbd> Pan</span>
         <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>Del</kbd> Delete</span>
+        <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>Ctrl+Z</kbd> Undo</span>
+        <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>Ctrl+Y</kbd> Redo</span>
         <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>+/-</kbd> Zoom</span>
         <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>0</kbd> Fit</span>
         <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>Esc</kbd> Deselect</span>
@@ -405,6 +644,17 @@ export function AnnotationWorkspace() {
         accept="image/*,.tiff,.tif"
         className="hidden"
         onChange={handleFileInput}
+      />
+
+      {/* Character search modal */}
+      <CharacterSearchModal
+        isOpen={showSearchModal}
+        onSelectCharacter={handleSelectCharacterFromSearch}
+        onClose={() => {
+          setShowSearchModal(false);
+          setNewBoxId(null);
+        }}
+        extraChars={customChars}
       />
     </div>
   );
