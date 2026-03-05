@@ -42,7 +42,7 @@ const RECOMMEND_FALLBACK_THRESHOLD = 0.25;
 
 function generateImageId(fileName: string): string {
   const base = fileName.replace(/\.[^.]+$/, "").replace(/[^a-zA-Z0-9]/g, "_");
-  return `page_${base}`.toLowerCase().replace(/__+/g, "_").substring(0, 30);
+  return base.toLowerCase().replace(/__+/g, "_").substring(0, 30);
 }
 
 function estimateDPI(width: number, height: number): number {
@@ -516,7 +516,7 @@ export function AnnotationWorkspace() {
         return l;
       }),
       variant: b.variant,
-      joins: b.joins,
+      // joins removed intentionally
       confidence: b.confidence,
     }));
 
@@ -759,7 +759,7 @@ export function AnnotationWorkspace() {
       <Toolbar
         mode={mode}
         zoom={zoom}
-        bboxCount={bboxes.length}
+        bboxCount={bboxes.filter(b => b.labels.length > 0).length}
         selectedId={selectedId}
         hasImage={!!imageMeta}
         imageName={imageMeta?.fileName ?? ""}

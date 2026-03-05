@@ -124,7 +124,7 @@ export function Toolbar({
           </svg>
         </div>
         <span className="text-sm text-slate-200 hidden md:block" style={{ fontWeight: 600, letterSpacing: 0.3 }}>
-          ஓலைச்சுவடி ஆய்வாளர்
+          குறிப்பாளர்
         </span>
       </div>
 

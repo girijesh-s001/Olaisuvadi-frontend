@@ -1,18 +1,7 @@
 import React, { useState } from "react";
 import { BoundingBox, StrikedOut, TamilChar } from "./types";
-import { Trash2, ChevronDown, Link2, Info, Tag, AlertTriangle, Folder } from "lucide-react";
-import { TAMIL_GROUPS, getLabelInfo } from "./tamilData";
-
-// Create a mapping from label to Tamil character
-const LABEL_TO_TAMIL_MAP = new Map<string, string>();
-TAMIL_GROUPS.forEach((group) => {
-  group.chars.forEach((char) => {
-    LABEL_TO_TAMIL_MAP.set(char.label, char.char);
-    char.variants.forEach((variant) => {
-      LABEL_TO_TAMIL_MAP.set(variant.label, char.char);
-    });
-  });
-});
+import { Trash2, ChevronDown, Info, Tag, AlertTriangle, Folder } from "lucide-react";
+import { getLabelInfo } from "./tamilData";
 
 interface Props {
   bbox: BoundingBox | null;
@@ -74,7 +63,7 @@ function Section({ title, icon, children }: { title: string; icon: React.ReactNo
   );
 }
 
-export function PropertiesPanel({ bbox, allBBoxes, imageMeta, onUpdate, onDelete, customChars = [] }: Props) {
+export function PropertiesPanel({ bbox, imageMeta, onUpdate, onDelete }: Props) {
   if (!bbox) {
     return (
       <div
@@ -117,8 +106,6 @@ export function PropertiesPanel({ bbox, allBBoxes, imageMeta, onUpdate, onDelete
       </div>
     );
   }
-
-  const otherBoxes = allBBoxes.filter((b) => b.id !== bbox.id);
 
   return (
     <div
@@ -317,84 +304,6 @@ export function PropertiesPanel({ bbox, allBBoxes, imageMeta, onUpdate, onDelete
         </div>
       </Section>
 
-      {/* Joins */}
-      <Section title="JOINS" icon={<Link2 size={12} />}>
-        <div className="space-y-2.5 mt-1">
-          <Toggle
-            label="Horizontal join"
-            checked={bbox.joins.horizontal}
-            onChange={(v) =>
-              onUpdate(bbox.id, { joins: { ...bbox.joins, horizontal: v } })
-            }
-          />
-          <Toggle
-            label="Vertical join"
-            checked={bbox.joins.vertical}
-            onChange={(v) =>
-              onUpdate(bbox.id, { joins: { ...bbox.joins, vertical: v } })
-            }
-          />
-          <div>
-            <label className="text-xs text-slate-500 block mb-1">Touching IDs</label>
-            <div className="flex flex-wrap gap-1 mb-1.5">
-              {bbox.joins.touching_ids.map((tid) => {
-                const touchingBox = allBBoxes.find((b) => b.id === tid);
-                const glyphId = touchingBox ? touchingBox.glyphId : tid;
-                return (
-                  <div
-                    key={tid}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono"
-                    style={{ background: "#1e293b", color: "#6ee7b7", border: "1px solid #1d4035" }}
-                  >
-                    {glyphId}
-                    <button
-                      onClick={() =>
-                        onUpdate(bbox.id, {
-                          joins: {
-                            ...bbox.joins,
-                            touching_ids: bbox.joins.touching_ids.filter((t) => t !== tid),
-                          },
-                        })
-                      }
-                      className="text-slate-500 hover:text-red-400"
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            <select
-              value=""
-              onChange={(e) => {
-                if (!e.target.value) return;
-                if (bbox.joins.touching_ids.includes(e.target.value)) return;
-                onUpdate(bbox.id, {
-                  joins: {
-                    ...bbox.joins,
-                    touching_ids: [...bbox.joins.touching_ids, e.target.value],
-                  },
-                });
-              }}
-              className="w-full px-2 py-1.5 rounded text-xs outline-none"
-              style={{
-                background: "#0f172a",
-                border: "1px solid #334155",
-                color: "#e2e8f0",
-                appearance: "none",
-              }}
-            >
-              <option value="">+ Link to glyph…</option>
-              {otherBoxes.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.glyphId}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-slate-600 mt-1">Joins can be auto-resolved in post-processing</p>
-          </div>
-        </div>
-      </Section>
 
       {/* Confidence */}
       <Section title="CONFIDENCE" icon={<Info size={12} />}>

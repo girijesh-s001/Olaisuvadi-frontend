@@ -92,6 +92,9 @@ function CharRow({
   onRemoveLabel,
   disabled,
   onDelete,
+  isMultiSelectMode,
+  isMultiSelected,
+  onMultiSelectToggle,
 }: {
   char: TamilChar;
   selectedLabels: string[];
@@ -99,11 +102,18 @@ function CharRow({
   onRemoveLabel: (label: string) => void;
   disabled: boolean;
   onDelete?: () => void;
+  isMultiSelectMode?: boolean;
+  isMultiSelected?: boolean;
+  onMultiSelectToggle?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const mainSelected = selectedLabels.includes(char.label);
 
   const handleMainClick = () => {
+    if (isMultiSelectMode && onMultiSelectToggle) {
+      onMultiSelectToggle();
+      return;
+    }
     if (disabled) return;
     if (mainSelected) {
       onRemoveLabel(char.label);
@@ -117,8 +127,8 @@ function CharRow({
       <div
         className="flex items-center gap-2 px-3 py-2 cursor-pointer select-none transition-colors"
         style={{
-          background: mainSelected ? "#1e3a5f" : "#0f172a",
-          opacity: disabled ? 0.5 : 1,
+          background: isMultiSelectMode && isMultiSelected ? "#1e3a5f" : mainSelected ? "#1e3a5f" : "#0f172a",
+          opacity: disabled && !isMultiSelectMode ? 0.5 : 1,
         }}
         onClick={handleMainClick}
       >
@@ -134,17 +144,30 @@ function CharRow({
           </div>
           <div className="text-xs text-slate-500 font-mono">{char.label}</div>
         </div>
-        {mainSelected && (
-          <div
-            className="w-4 h-4 rounded-full flex items-center justify-center"
-            style={{ background: "#3B82F6", flexShrink: 0 }}
-          >
-            <svg width="8" height="8" viewBox="0 0 8 8" fill="white">
-              <path d="M1 4l2 2 4-4" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </div>
+        {isMultiSelectMode ? (
+          isMultiSelected && (
+            <div
+              className="w-4 h-4 rounded-full flex items-center justify-center"
+              style={{ background: "#3B82F6", flexShrink: 0 }}
+            >
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="white">
+                <path d="M1 4l2 2 4-4" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          )
+        ) : (
+          mainSelected && (
+            <div
+              className="w-4 h-4 rounded-full flex items-center justify-center"
+              style={{ background: "#3B82F6", flexShrink: 0 }}
+            >
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="white">
+                <path d="M1 4l2 2 4-4" stroke="white" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+          )
         )}
-        {onDelete && (
+        {onDelete && !isMultiSelectMode && (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -201,6 +224,8 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
   );
   const [search, setSearch] = useState("");
   const [showFolderInput, setShowFolderInput] = useState(false);
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
   // inputs for custom folder creation
   const [customFolderTamilChar, setCustomFolderTamilChar] = useState("");
   const [customFolderSound, setCustomFolderSound] = useState("");
@@ -248,7 +273,32 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
     setCustomFolderSound("");
     setShowFolderInput(false);
   };
+  // Toggle item in multi-select mode
+  const toggleMultiSelect = (label: string) => {
+    setMultiSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  };
 
+  // Delete selected custom chars in bulk
+  const handleBulkDelete = () => {
+    if (multiSelected.size === 0) return;
+    const confirmed = window.confirm(
+      `Delete ${multiSelected.size} custom glyph(s)? This will also remove them from all labels.`
+    );
+    if (!confirmed) return;
+    
+    multiSelected.forEach((label) => {
+      onDeleteCustomChar(label);
+    });
+    setMultiSelected(new Set());
+  };
   // Extract any folder labels that were applied to bboxes but for which we
   // don’t yet have metadata (e.g. imported annotations). They will remain in a
   // separate section with a folder icon.
@@ -273,9 +323,25 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
     >
       {/* Header */}
       <div className="px-3 py-3" style={{ borderBottom: "1px solid #1e293b" }}>
-        <h2 className="text-sm text-slate-200 mb-2" style={{ fontWeight: 600, letterSpacing: 0.3 }}>
-          Tamil Characters
-        </h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm text-slate-200" style={{ fontWeight: 600, letterSpacing: 0.3 }}>
+            Tamil Characters / தமிழ் எழுத்துக்கள்
+          </h2>
+          <button
+            onClick={() => setMultiSelectMode(!multiSelectMode)}
+            disabled={customChars.length === 0}
+            className="text-xs px-2 py-1 rounded transition-colors"
+            style={{
+              background: multiSelectMode && customChars.length > 0 ? "#3B82F6" : "#1e293b",
+              color: multiSelectMode && customChars.length > 0 ? "#fff" : "#94a3b8",
+              border: multiSelectMode && customChars.length > 0 ? "1px solid #3B82F6" : "1px solid #334155",
+              cursor: customChars.length > 0 ? "pointer" : "not-allowed",
+              opacity: customChars.length > 0 ? 1 : 0.5,
+            }}
+          >
+            {multiSelectMode ? "Done" : "Edit"}
+          </button>
+        </div>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -296,6 +362,41 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
           </div>
         )}
       </div>
+
+      {/* Multi-select delete bar */}
+      {multiSelectMode && multiSelected.size > 0 && (
+        <div className="px-3 py-2 flex items-center justify-between" style={{ background: "#1e3a5f", borderBottom: "1px solid #3B82F6" }}>
+          <span className="text-xs text-slate-300">
+            {multiSelected.size} selected
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={handleBulkDelete}
+              className="text-xs px-3 py-1 rounded transition-colors"
+              style={{
+                background: "#dc2626",
+                color: "#fff",
+                border: "1px solid #991b1b",
+                cursor: "pointer",
+              }}
+            >
+              Delete Selected
+            </button>
+            <button
+              onClick={() => setMultiSelected(new Set())}
+              className="text-xs px-3 py-1 rounded transition-colors"
+              style={{
+                background: "#1e293b",
+                color: "#94a3b8",
+                border: "1px solid #334155",
+                cursor: "pointer",
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Custom Glyph Section - form to create new metadata-rich glyph */}
       <div className="px-3 py-2" style={{ borderBottom: "1px solid #1e293b", background: "#0a1525" }}>
@@ -404,7 +505,10 @@ export function CharacterPanel({ selectedBBoxId, selectedLabels, allBBoxes, onAd
                 selectedLabels={selectedLabels}
                 onAddLabel={onAddLabel}
                 onRemoveLabel={onRemoveLabel}
-                disabled={disabled}
+                disabled={disabled || multiSelectMode}
+                isMultiSelectMode={multiSelectMode}
+                isMultiSelected={multiSelected.has(char.label)}
+                onMultiSelectToggle={() => toggleMultiSelect(char.label)}
                 onDelete={() => {
                   const ok = window.confirm(`Delete custom glyph "${char.name}"?`);
                   if (ok) onDeleteCustomChar(char.label);

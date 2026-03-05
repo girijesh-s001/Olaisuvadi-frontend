@@ -38,29 +38,47 @@ export function CharacterSearchModal({
       return;
     }
 
-    const query = search.toLowerCase();
+    const query = search.toLowerCase().trim();
     const found: Array<{ char: TamilChar; group: string }> = [];
+    const seen = new Set<string>();
+
+    // Split by spaces to support multi-character search (e.g., "na ka va ga")
+    const searchTerms = query.split(/\s+/).filter(t => t.length > 0);
 
     TAMIL_GROUPS.forEach((group) => {
       group.chars.forEach((char) => {
-        if (
+        const charName = char.name.toLowerCase();
+        const charLabel = char.label.toLowerCase();
+        
+        // Match all search terms (AND logic)
+        const matchesAny = searchTerms.some(term =>
           char.char.includes(search) ||
-          char.name.toLowerCase().includes(query) ||
-          char.label.toLowerCase().includes(query)
-        ) {
+          charName.includes(term) ||
+          charLabel.includes(term) ||
+          char.variants.some(v => v.label.toLowerCase().includes(term) || v.description.toLowerCase().includes(term))
+        );
+
+        if (matchesAny && !seen.has(char.label)) {
           found.push({ char, group: group.group });
+          seen.add(char.label);
         }
       });
     });
 
     if (extraChars) {
       extraChars.forEach((char) => {
-        if (
+        const charName = char.name.toLowerCase();
+        const charLabel = char.label.toLowerCase();
+        
+        const matchesAny = searchTerms.some(term =>
           char.char.includes(search) ||
-          char.name.toLowerCase().includes(query) ||
-          char.label.toLowerCase().includes(query)
-        ) {
+          charName.includes(term) ||
+          charLabel.includes(term)
+        );
+
+        if (matchesAny && !seen.has(char.label)) {
           found.push({ char, group: "Custom" });
+          seen.add(char.label);
         }
       });
     }
