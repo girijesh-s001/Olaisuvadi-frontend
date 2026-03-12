@@ -1,0 +1,77 @@
+image_label:
+  image_id: "para_img"
+  width: 1528
+  height: 178
+  dpi: 150
+annotations:
+  -
+    glyph_id: "g_ற_11_17_36"
+    image_id: "para_img"
+    bbox:
+      - 383
+      - 6
+      - 28
+      - 27
+    mask: null
+    labels:
+      - "ற"
+    variant:
+      elongated: false
+      broken: false
+      striked_out: "none"
+    confidence: 1
+  -
+    glyph_id: "g_ற_11_17_44"
+    image_id: "para_img"
+    bbox:
+      - 903
+      - 112
+      - 31
+      - 25
+    mask: null
+    labels:
+      - "ற"
+    variant:
+      elongated: false
+      broken: false
+      striked_out: "none"
+    confidence: 1
+  -
+    glyph_id: "g_ட_11_17_55"
+    image_id: "para_img"
+    bbox:
+      - 580
+      - 34
+      - 49
+      - 28
+    mask: null
+    labels:
+      - "ட"
+    variant:
+      elongated: false
+      broken: false
+      striked_out: "none"
+    confidence: 1
+  -
+    glyph_id: "g_ற_11_18_14"
+    image_id: "para_img"
+    bbox:
+      - 422
+      - 141
+      - 37
+      - 36
+    mask: null
+    labels:
+      - "ற"
+    variant:
+      elongated: false
+      broken: false
+      striked_out: "none"
+    confidence: 1
+custom_chars:
+  -
+    char: "g"
+    name: "gh"
+    label: "FOLDER_GH"
+    variants:
+[]
