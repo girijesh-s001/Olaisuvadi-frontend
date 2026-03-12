@@ -15,6 +15,8 @@ import {
   Search,
 } from "lucide-react";
 import { DrawingMode, BoundingBox } from "./types";
+import { UserProfile } from "../auth/UserProfile";
+import { SaveToGitHub } from "../github/SaveToGitHub";
 
 interface Props {
   mode: DrawingMode;
@@ -23,6 +25,7 @@ interface Props {
   selectedId: string | null;
   hasImage: boolean;
   imageName: string;
+  yamlContent: string;
   onModeChange: (mode: DrawingMode) => void;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -93,6 +96,7 @@ export function Toolbar({
   selectedId,
   hasImage,
   imageName,
+  yamlContent,
   onModeChange,
   onZoomIn,
   onZoomOut,
@@ -239,6 +243,19 @@ export function Toolbar({
         onClick={onToggleRecommendation}
         disabled={!hasImage}
       />
+
+      <Divider />
+
+      {/* GitHub Integration */}
+      <SaveToGitHub
+        yamlContent={yamlContent}
+        fileName={imageName ? `${imageName.replace(/\.[^.]+$/, '')}_annotations.yaml` : 'annotations.yaml'}
+      />
+
+      <Divider />
+
+      {/* User Profile */}
+      <UserProfile />
     </div>
   );
 }

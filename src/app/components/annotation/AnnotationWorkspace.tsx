@@ -482,8 +482,8 @@ export function AnnotationWorkspace() {
   }, [selectedId, handleDeleteBBox, handleUndo, handleRedo]);
 
   // Export YAML
-  const handleExportYAML = () => {
-    if (!imageMeta) return;
+  const generateYAMLContent = useCallback(() => {
+    if (!imageMeta) return "";
 
     const imageLabel = {
       image_id: imageMeta.image_id,
@@ -491,13 +491,6 @@ export function AnnotationWorkspace() {
       height: imageMeta.naturalHeight,
       dpi: imageMeta.dpi,
     };
-
-    // Get current time in HH_MM_SS format
-    const now = new Date();
-    const hours = String(now.getHours()).padStart(2, "0");
-    const minutes = String(now.getMinutes()).padStart(2, "0");
-    const seconds = String(now.getSeconds()).padStart(2, "0");
-    const timeString = `${hours}_${minutes}_${seconds}`;
 
     const annotations: GlyphAnnotation[] = bboxes.map((b) => ({
       glyph_id: b.glyphId,
@@ -526,7 +519,13 @@ export function AnnotationWorkspace() {
       ...(customChars.length > 0 ? { custom_chars: customChars } : {}),
     };
 
-    const yaml = toYAML(exportData);
+    return toYAML(exportData);
+  }, [imageMeta, bboxes, customChars]);
+
+  const handleExportYAML = () => {
+    if (!imageMeta) return;
+
+    const yaml = generateYAMLContent();
     const blob = new Blob([yaml], { type: "text/yaml" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -763,6 +762,7 @@ export function AnnotationWorkspace() {
         selectedId={selectedId}
         hasImage={!!imageMeta}
         imageName={imageMeta?.fileName ?? ""}
+        yamlContent={generateYAMLContent()}
         onModeChange={setMode}
         onZoomIn={handleZoomIn}
         onZoomOut={handleZoomOut}
