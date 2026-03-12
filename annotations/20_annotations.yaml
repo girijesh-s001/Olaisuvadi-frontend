@@ -1,0 +1,93 @@
+image_label:
+  image_id: "20"
+  width: 1600
+  height: 191
+  dpi: 150
+annotations:
+  -
+    glyph_id: "g_ட_11_06_30"
+    image_id: "20"
+    bbox:
+      - 520
+      - 7
+      - 47
+      - 28
+    mask: null
+    labels:
+      - "ட"
+    variant:
+      elongated: false
+      broken: false
+      striked_out: "none"
+    confidence: 1
+  -
+    glyph_id: "g_ட_11_06_42"
+    image_id: "20"
+    bbox:
+      - 594
+      - 78
+      - 64
+      - 25
+    mask: null
+    labels:
+      - "ட"
+    variant:
+      elongated: false
+      broken: false
+      striked_out: "none"
+    confidence: 1
+  -
+    glyph_id: "g_ப_11_06_47"
+    image_id: "20"
+    bbox:
+      - 958
+      - 51
+      - 38
+      - 17
+    mask: null
+    labels:
+      - "ப"
+    variant:
+      elongated: false
+      broken: false
+      striked_out: "none"
+    confidence: 1
+  -
+    glyph_id: "g_ட_11_07_00"
+    image_id: "20"
+    bbox:
+      - 239
+      - 107
+      - 45
+      - 23
+    mask: null
+    labels:
+      - "ட"
+    variant:
+      elongated: false
+      broken: false
+      striked_out: "none"
+    confidence: 1
+  -
+    glyph_id: "g_ப_11_07_10"
+    image_id: "20"
+    bbox:
+      - 1403
+      - 63
+      - 38
+      - 19
+    mask: null
+    labels:
+      - "ப"
+    variant:
+      elongated: false
+      broken: false
+      striked_out: "none"
+    confidence: 1
+custom_chars:
+  -
+    char: "g"
+    name: "gh"
+    label: "FOLDER_GH"
+    variants:
+[]
