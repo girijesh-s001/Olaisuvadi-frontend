@@ -6,6 +6,63 @@ export const BBOX_COLORS = [
   "#84CC16", "#6366F1", "#D946EF", "#0EA5E9", "#10B981",
 ];
 
+// Helper function to generate consonant+vowel combinations
+const generateConsonantVowelCombos = () => {
+  const consonants = [
+    { char: "க", label: "KA" },
+    { char: "ங", label: "NGA" },
+    { char: "ச", label: "CA" },
+    { char: "ஞ", label: "NJA" },
+    { char: "ட", label: "TA" },
+    { char: "ண", label: "NA" },
+    { char: "த", label: "THA" },
+    { char: "ந", label: "NA2" },
+    { char: "ப", label: "PA" },
+    { char: "ம", label: "MA" },
+    { char: "ய", label: "YA" },
+    { char: "ர", label: "RA" },
+    { char: "ல", label: "LA" },
+    { char: "வ", label: "VA" },
+    { char: "ழ", label: "ZHA" },
+    { char: "ள", label: "LLA" },
+    { char: "ற", label: "RRA" },
+    { char: "ன", label: "NA3" },
+  ];
+  
+  const vowels = [
+    { char: "ா", label: "AA", name: "ā" },
+    { char: "ி", label: "I", name: "i" },
+    { char: "ீ", label: "II", name: "ī" },
+    { char: "ு", label: "U", name: "u" },
+    { char: "ூ", label: "UU", name: "ū" },
+    { char: "ெ", label: "E", name: "e" },
+    { char: "ே", label: "EE", name: "ē" },
+    { char: "ை", label: "AI", name: "ai" },
+    { char: "ொ", label: "O", name: "o" },
+    { char: "ோ", label: "OO", name: "ō" },
+    { char: "ௌ", label: "AU", name: "au" },
+  ];
+  
+  const combos: TamilChar[] = [];
+  
+  consonants.forEach(cons => {
+    vowels.forEach(vowel => {
+      const comboChar = cons.char + vowel.char;
+      const label = cons.label + vowel.label;
+      combos.push({
+        char: comboChar,
+        label: label,
+        name: `${cons.char}${vowel.char}`,
+        variants: [
+          { label: label, description: `Consonant-vowel combination: ${vowel.name}` }
+        ]
+      });
+    });
+  });
+  
+  return combos;
+};
+
 export const TAMIL_GROUPS: TamilGroup[] = [
   {
     group: "உயிரெழுத்து (Vowels)",
@@ -421,6 +478,108 @@ export const TAMIL_GROUPS: TamilGroup[] = [
       },
     ],
   },
+  {
+    group: "உயிர்மெய் (Consonant + Vowel Combinations)",
+    icon: "க",
+    chars: generateConsonantVowelCombos(),
+  },
+  {
+    group: "எண்கள் (Tamil Numerals)",
+    icon: "௦",
+    chars: [
+      {
+        char: "௦",
+        label: "TNUM_0",
+        name: "௦ (0)",
+        variants: [
+          { label: "TNUM_0", description: "Zero" },
+          { label: "TNUM_0_v1", description: "Variant form" },
+        ],
+      },
+      {
+        char: "௧",
+        label: "TNUM_1",
+        name: "௧ (1)",
+        variants: [
+          { label: "TNUM_1", description: "One" },
+          { label: "TNUM_1_v1", description: "Variant form" },
+        ],
+      },
+      {
+        char: "௨",
+        label: "TNUM_2",
+        name: "௨ (2)",
+        variants: [
+          { label: "TNUM_2", description: "Two" },
+          { label: "TNUM_2_v1", description: "Variant form" },
+        ],
+      },
+      {
+        char: "௩",
+        label: "TNUM_3",
+        name: "௩ (3)",
+        variants: [
+          { label: "TNUM_3", description: "Three" },
+          { label: "TNUM_3_v1", description: "Variant form" },
+        ],
+      },
+      {
+        char: "௪",
+        label: "TNUM_4",
+        name: "௪ (4)",
+        variants: [
+          { label: "TNUM_4", description: "Four" },
+          { label: "TNUM_4_v1", description: "Variant form" },
+        ],
+      },
+      {
+        char: "௫",
+        label: "TNUM_5",
+        name: "௫ (5)",
+        variants: [
+          { label: "TNUM_5", description: "Five" },
+          { label: "TNUM_5_v1", description: "Variant form" },
+        ],
+      },
+      {
+        char: "௬",
+        label: "TNUM_6",
+        name: "௬ (6)",
+        variants: [
+          { label: "TNUM_6", description: "Six" },
+          { label: "TNUM_6_v1", description: "Variant form" },
+        ],
+      },
+      {
+        char: "௭",
+        label: "TNUM_7",
+        name: "௭ (7)",
+        variants: [
+          { label: "TNUM_7", description: "Seven" },
+          { label: "TNUM_7_v1", description: "Variant form" },
+        ],
+      },
+      {
+        char: "௮",
+        label: "TNUM_8",
+        name: "௮ (8)",
+        variants: [
+          { label: "TNUM_8", description: "Eight" },
+          { label: "TNUM_8_v1", description: "Variant form" },
+        ],
+      },
+      {
+        char: "௯",
+        label: "TNUM_9",
+        name: "௯ (9)",
+        variants: [
+          { label: "TNUM_9", description: "Nine" },
+          { label: "TNUM_9_v1", description: "Variant form" },
+        ],
+      },
+    ],
+  },
+
 ];
 
 export const ALL_LABELS: string[] = TAMIL_GROUPS.flatMap((g) =>
