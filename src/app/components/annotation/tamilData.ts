@@ -453,6 +453,22 @@ export const TAMIL_GROUPS: TamilGroup[] = [
       { char: "னௌ", label: "NNNAU", name: "னௌ", variants: [{ label: "NNNAU", description: "Standard form" }] },
     ],
   },
+  {
+    group: "எண்கள்",
+    icon: "௦",
+    chars: [
+      { char: "௦", label: "NUM_0", name: "0", variants: [{ label: "NUM_0", description: "Zero" }] },
+      { char: "௧", label: "NUM_1", name: "1", variants: [{ label: "NUM_1", description: "One" }] },
+      { char: "௨", label: "NUM_2", name: "2", variants: [{ label: "NUM_2", description: "Two" }] },
+      { char: "௩", label: "NUM_3", name: "3", variants: [{ label: "NUM_3", description: "Three" }] },
+      { char: "௪", label: "NUM_4", name: "4", variants: [{ label: "NUM_4", description: "Four" }] },
+      { char: "௫", label: "NUM_5", name: "5", variants: [{ label: "NUM_5", description: "Five" }] },
+      { char: "௬", label: "NUM_6", name: "6", variants: [{ label: "NUM_6", description: "Six" }] },
+      { char: "௭", label: "NUM_7", name: "7", variants: [{ label: "NUM_7", description: "Seven" }] },
+      { char: "௮", label: "NUM_8", name: "8", variants: [{ label: "NUM_8", description: "Eight" }] },
+      { char: "௯", label: "NUM_9", name: "9", variants: [{ label: "NUM_9", description: "Nine" }] },
+    ],
+  },
 ];
 
 export const ALL_LABELS: string[] = TAMIL_GROUPS.flatMap((g) =>
