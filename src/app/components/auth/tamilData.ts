@@ -1,4 +1,4 @@
-import { TamilGroup, TamilChar } from "./types";
+import { TamilGroup, TamilChar } from "../annotation/types";
 
 export const BBOX_COLORS = [
   "#EF4444", "#F97316", "#EAB308", "#22C55E", "#06B6D4",
