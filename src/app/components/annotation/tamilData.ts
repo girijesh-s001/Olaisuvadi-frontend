@@ -59,7 +59,7 @@ export const TAMIL_GROUPS: TamilGroup[] = [
       { char: "ீ", label: "NEdhil_kombu", name: "ீ (nedhil kombu)", variants: [{ label: "NEdhil_kombu", description: "Standard form" }] },
       { char: "ெ", label: "Otta_kombu_kuril", name: "ெ (otta kombu kuril)", variants: [{ label: "Otta_kombu_kuril", description: "Standard form" }] },
       { char: "ே", label: "Retta_kombu_kuril", name: "ே (retta kombu kuril)", variants: [{ label: "Retta_kombu_kuril", description: "Standard form" }] },
-      { char: "ை", label: "AI", name: "ை (ai)", variants: [{ label: "AI", description: "Standard form" }] },
+      { char: "ை", label: "ai_ottru", name: "ை (ai)", variants: [{ label: "ai_ottru", description: "Standard form" }] },
       { char: "ொ", label: "Otta_kombu_nedhil", name: "ொ (otta kombu nedhil)", variants: [{ label: "Otta_kombu_nedhil", description: "Standard form" }] },
       { char: "ோ", label: "Retta_kombu_nedhil", name: "ோ (retta kombu nedhil)", variants: [{ label: "Retta_kombu_nedhil", description: "Standard form" }] },
       { char: "ௌ", label: "Consonanuts_kombu_au", name: "ௌ (au kombu)", variants: [{ label: "Consonanuts_kombu_au", description: "Standard form" }] },
