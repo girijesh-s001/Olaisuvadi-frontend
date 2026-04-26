@@ -61,6 +61,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
+      // Hardcoded test user for development/testing
+      if (identifier === 'test' && credential === 'test') {
+        const testUser: GitHubUser = {
+          login: 'test',
+          name: 'Test User',
+          avatar_url: 'https://github.com/identicons/test.png',
+          bio: 'Development test account'
+        };
+        setToken('mock-token-test');
+        setUser(testUser);
+        localStorage.setItem('github_token', 'mock-token-test');
+        localStorage.setItem('github_user', JSON.stringify(testUser));
+        localStorage.setItem('github_auth_method', method);
+        return;
+      }
       if (method === 'credentials') {
         // Email + Password authentication
         // GitHub API Basic Auth: base64(email:password)

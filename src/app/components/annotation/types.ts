@@ -27,6 +27,23 @@ export interface BoundingBox {
   glyphId: string;
 }
 
+export interface Point {
+  x: number;
+  y: number;
+}
+
+export interface Polygon {
+  id: string;
+  points: Point[];
+  color: string;
+  labels: string[];
+  variant: BBoxVariant;
+  joins: BBoxJoins;
+  confidence: number;
+  createdAt: Date;
+  glyphId: string;
+}
+
 export interface ImageMeta {
   image_id: string;
   src: string;
@@ -39,7 +56,8 @@ export interface ImageMeta {
 export interface GlyphAnnotation {
   glyph_id: string;
   image_id: string;
-  bbox: [number, number, number, number];
+  bbox?: [number, number, number, number];
+  polygon?: Array<[number, number]>;
   mask: null;
   labels: string[];
   variant: {
@@ -47,7 +65,7 @@ export interface GlyphAnnotation {
     broken: boolean;
     striked_out: StrikedOut;
   };
-  joins: {
+  joins?: {
     horizontal: boolean;
     vertical: boolean;
     touching_ids: string[];
@@ -88,4 +106,5 @@ export interface TamilGroup {
   chars: TamilChar[];
 }
 
-export type DrawingMode = "draw" | "select" | "pan";
+export type DrawingMode = "draw" | "draw-polygon" | "select" | "pan";
+

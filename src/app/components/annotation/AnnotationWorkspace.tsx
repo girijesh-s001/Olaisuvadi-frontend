@@ -1,12 +1,13 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import JSZip from "jszip";
-import { BoundingBox, DrawingMode, ExportData, GlyphAnnotation, ImageMeta, TamilChar } from "./types";
+import { BoundingBox, DrawingMode, ExportData, GlyphAnnotation, ImageMeta, TamilChar, Polygon } from "./types";
 import { ImageCanvas } from "./ImageCanvas";
 import { CharacterPanel } from "./CharacterPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { Toolbar } from "./Toolbar";
 import { CharacterSearchModal } from "./CharacterSearchModal";
 import { TAMIL_GROUPS, registerCustomChar, getCustomChar, clearCustomChars } from "./tamilData";
+
 
 // Create a mapping from label to Tamil character
 const LABEL_TO_TAMIL_MAP = new Map<string, string>();
@@ -176,6 +177,7 @@ function encodeBBox(image: HTMLImageElement, bbox: BoundingBox, size = 16): numb
 export function AnnotationWorkspace() {
   const [imageMeta, setImageMeta] = useState<ImageMeta | null>(null);
   const [bboxes, setBboxes] = useState<BoundingBox[]>([]);
+  const [polygons, setPolygons] = useState<Polygon[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<DrawingMode>("draw");
   const [zoom, setZoom] = useState(1);
@@ -207,7 +209,11 @@ export function AnnotationWorkspace() {
     return [];
   });
 
+  // Selected annotation — check bboxes first, then polygons
   const selectedBbox = bboxes.find((b) => b.id === selectedId) ?? null;
+  const selectedPolygon = polygons.find((p) => p.id === selectedId) ?? null;
+  // A unified "selected item" that works for both — PropertiesPanel accepts either
+  const selectedAnnotation = selectedBbox ?? selectedPolygon;
 
   const cloneBBoxes = useCallback((boxes: BoundingBox[]): BoundingBox[] => {
     return boxes.map((b) => ({
@@ -242,6 +248,17 @@ export function AnnotationWorkspace() {
     [pushUndoSnapshot]
   );
 
+  const updatePolygonsWithHistory = useCallback(
+    (updater: (prev: Polygon[]) => Polygon[]) => {
+      setPolygons((prev) => {
+        const next = updater(prev);
+        if (next === prev) return prev;
+        return next;
+      });
+    },
+    []
+  );
+
   // Handle image load
   const loadImageFile = useCallback((file: File) => {
     const url = URL.createObjectURL(file);
@@ -270,6 +287,8 @@ export function AnnotationWorkspace() {
     };
     img.src = url;
   }, []);
+
+
 
   const handleFileDrop = useCallback(
     (e: React.DragEvent) => {
@@ -331,6 +350,29 @@ export function AnnotationWorkspace() {
     setSelectedId(null);
   }, [updateBBoxesWithHistory]);
 
+  const handleAddPolygon = useCallback(
+    (polygon: Omit<Polygon, "labels" | "variant" | "joins" | "confidence" | "createdAt" | "glyphId">) => {
+      const created = new Date();
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const tstr = `${pad(created.getHours())}_${pad(created.getMinutes())}_${pad(created.getSeconds())}`;
+      
+      const newPolygon: Polygon = {
+        ...polygon,
+        labels: [],
+        variant: { ...DEFAULT_VARIANT },
+        joins: { ...DEFAULT_JOINS, touching_ids: [] },
+        confidence: 1.0,
+        createdAt: created,
+        glyphId: `p_unlabeled_${tstr}`,
+      };
+      updatePolygonsWithHistory((prev) => [...prev, newPolygon]);
+      setSelectedId(newPolygon.id);
+      setNewBoxId(newPolygon.id);
+      setShowSearchModal(true);
+    },
+    [updatePolygonsWithHistory]
+  );
+
   // Labels
   // helper to build glyph id from a label and creation time
   const buildGlyphId = (label: string | null, createdAt: Date) => {
@@ -354,35 +396,62 @@ export function AnnotationWorkspace() {
   const handleAddLabel = useCallback(
     (label: string) => {
       if (!selectedId) return;
-      updateBBoxesWithHistory((prev) =>
-        prev.map((b) => {
-          if (b.id === selectedId && !b.labels.includes(label)) {
-            const newLabels = [...b.labels, label];
-            const newGlyph = buildGlyphId(newLabels[0] || null, b.createdAt);
-            return { ...b, labels: newLabels, glyphId: newGlyph };
-          }
-          return b;
-        })
-      );
+      if (selectedId.startsWith('p_')) {
+        // Polygon label
+        updatePolygonsWithHistory((prev) =>
+          prev.map((p) => {
+            if (p.id === selectedId && !p.labels.includes(label)) {
+              const newLabels = [...p.labels, label];
+              const newGlyph = buildGlyphId(newLabels[0] || null, p.createdAt);
+              return { ...p, labels: newLabels, glyphId: newGlyph };
+            }
+            return p;
+          })
+        );
+      } else {
+        updateBBoxesWithHistory((prev) =>
+          prev.map((b) => {
+            if (b.id === selectedId && !b.labels.includes(label)) {
+              const newLabels = [...b.labels, label];
+              const newGlyph = buildGlyphId(newLabels[0] || null, b.createdAt);
+              return { ...b, labels: newLabels, glyphId: newGlyph };
+            }
+            return b;
+          })
+        );
+      }
     },
-    [selectedId, updateBBoxesWithHistory]
+    [selectedId, updateBBoxesWithHistory, updatePolygonsWithHistory]
   );
 
   const handleRemoveLabel = useCallback(
     (label: string) => {
       if (!selectedId) return;
-      updateBBoxesWithHistory((prev) =>
-        prev.map((b) => {
-          if (b.id === selectedId) {
-            const newLabels = b.labels.filter((l) => l !== label);
-            const newGlyph = buildGlyphId(newLabels[0] || null, b.createdAt);
-            return { ...b, labels: newLabels, glyphId: newGlyph };
-          }
-          return b;
-        })
-      );
+      if (selectedId.startsWith('p_')) {
+        updatePolygonsWithHistory((prev) =>
+          prev.map((p) => {
+            if (p.id === selectedId) {
+              const newLabels = p.labels.filter((l) => l !== label);
+              const newGlyph = buildGlyphId(newLabels[0] || null, p.createdAt);
+              return { ...p, labels: newLabels, glyphId: newGlyph };
+            }
+            return p;
+          })
+        );
+      } else {
+        updateBBoxesWithHistory((prev) =>
+          prev.map((b) => {
+            if (b.id === selectedId) {
+              const newLabels = b.labels.filter((l) => l !== label);
+              const newGlyph = buildGlyphId(newLabels[0] || null, b.createdAt);
+              return { ...b, labels: newLabels, glyphId: newGlyph };
+            }
+            return b;
+          })
+        );
+      }
     },
-    [selectedId, updateBBoxesWithHistory]
+    [selectedId, updateBBoxesWithHistory, updatePolygonsWithHistory]
   );
 
   const handleDeleteCustomChar = (label: string) => {
@@ -400,20 +469,33 @@ export function AnnotationWorkspace() {
   const handleSelectCharacterFromSearch = useCallback(
     (label: string) => {
       if (!newBoxId) return;
-      updateBBoxesWithHistory((prev) =>
-        prev.map((b) => {
-          if (b.id === newBoxId && !b.labels.includes(label)) {
-            const newLabels = [...b.labels, label];
-            const newGlyph = buildGlyphId(newLabels[0] || null, b.createdAt);
-            return { ...b, labels: newLabels, glyphId: newGlyph };
-          }
-          return b;
-        })
-      );
+      if (newBoxId.startsWith('p_')) {
+        updatePolygonsWithHistory((prev) =>
+          prev.map((p) => {
+            if (p.id === newBoxId && !p.labels.includes(label)) {
+              const newLabels = [...p.labels, label];
+              const newGlyph = buildGlyphId(newLabels[0] || null, p.createdAt);
+              return { ...p, labels: newLabels, glyphId: newGlyph };
+            }
+            return p;
+          })
+        );
+      } else {
+        updateBBoxesWithHistory((prev) =>
+          prev.map((b) => {
+            if (b.id === newBoxId && !b.labels.includes(label)) {
+              const newLabels = [...b.labels, label];
+              const newGlyph = buildGlyphId(newLabels[0] || null, b.createdAt);
+              return { ...b, labels: newLabels, glyphId: newGlyph };
+            }
+            return b;
+          })
+        );
+      }
       setShowSearchModal(false);
       setNewBoxId(null);
     },
-    [newBoxId, updateBBoxesWithHistory]
+    [newBoxId, updateBBoxesWithHistory, updatePolygonsWithHistory]
   );
 
   const handleUndo = useCallback(() => {
@@ -439,10 +521,12 @@ export function AnnotationWorkspace() {
   }, [cloneBBoxes]);
 
   useEffect(() => {
-    if (selectedId && !bboxes.some((b) => b.id === selectedId)) {
+    if (selectedId &&
+        !bboxes.some((b) => b.id === selectedId) &&
+        !polygons.some((p) => p.id === selectedId)) {
       setSelectedId(null);
     }
-  }, [bboxes, selectedId]);
+  }, [bboxes, polygons, selectedId]);
 
   // Zoom
   const handleZoomIn = () => setZoom((z) => Math.min(z + 0.25, 4));
@@ -454,6 +538,7 @@ export function AnnotationWorkspace() {
     const handler = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "d" || e.key === "D") setMode("draw");
+      if (e.key === "g" || e.key === "G") setMode("draw-polygon");
       if (e.key === "s" || e.key === "S") setMode("select");
       if (e.key === "p" || e.key === "P") setMode("pan");
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && (e.key === "z" || e.key === "Z")) {
@@ -470,7 +555,14 @@ export function AnnotationWorkspace() {
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedId) handleDeleteBBox(selectedId);
+        if (selectedId) {
+          if (selectedId.startsWith('p_')) {
+            setPolygons((prev) => prev.filter((p) => p.id !== selectedId));
+            setSelectedId(null);
+          } else {
+            handleDeleteBBox(selectedId);
+          }
+        }
       }
       if (e.key === "=" || e.key === "+") handleZoomIn();
       if (e.key === "-" || e.key === "_") handleZoomOut();
@@ -492,7 +584,7 @@ export function AnnotationWorkspace() {
       dpi: imageMeta.dpi,
     };
 
-    const annotations: GlyphAnnotation[] = bboxes.map((b) => ({
+    const bboxAnnotations: GlyphAnnotation[] = bboxes.map((b) => ({
       glyph_id: b.glyphId,
       image_id: imageMeta.image_id,
       bbox: [b.x, b.y, b.w, b.h],
@@ -513,6 +605,29 @@ export function AnnotationWorkspace() {
       confidence: b.confidence,
     }));
 
+    const polygonAnnotations: GlyphAnnotation[] = polygons.map((p) => ({
+      glyph_id: p.glyphId,
+      image_id: imageMeta.image_id,
+      polygon: p.points.map(pt => [pt.x, pt.y]),
+      mask: null,
+      // convert labels to tamil characters where possible
+      labels: p.labels.map((l) => {
+        // Standard Tamil character label
+        if (LABEL_TO_TAMIL_MAP.has(l)) return LABEL_TO_TAMIL_MAP.get(l)!;
+        // Custom folder — use the Tamil character entered by the user
+        if (l.startsWith("FOLDER_")) {
+          const customChar = getCustomChar(l);
+          if (customChar) return customChar.char;
+        }
+        return l;
+      }),
+      variant: p.variant,
+      // joins removed intentionally
+      confidence: p.confidence,
+    }));
+
+    const annotations: GlyphAnnotation[] = [...bboxAnnotations, ...polygonAnnotations];
+
     const exportData: ExportData = {
       image_label: imageLabel,
       annotations,
@@ -520,7 +635,7 @@ export function AnnotationWorkspace() {
     };
 
     return toYAML(exportData);
-  }, [imageMeta, bboxes, customChars]);
+  }, [imageMeta, bboxes, polygons, customChars]);
 
   const handleExportYAML = () => {
     if (!imageMeta) return;
@@ -737,7 +852,7 @@ export function AnnotationWorkspace() {
 
   // Warn user before refresh/close when work exists.
   useEffect(() => {
-    const hasWork = !!imageMeta || bboxes.length > 0;
+    const hasWork = !!imageMeta || bboxes.length > 0 || polygons.length > 0;
     if (!hasWork) return;
 
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -747,7 +862,7 @@ export function AnnotationWorkspace() {
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [imageMeta, bboxes.length]);
+  }, [imageMeta, bboxes.length, polygons.length]);
 
   return (
     <div
@@ -758,7 +873,7 @@ export function AnnotationWorkspace() {
       <Toolbar
         mode={mode}
         zoom={zoom}
-        bboxCount={bboxes.filter(b => b.labels.length > 0).length}
+        bboxCount={bboxes.filter(b => b.labels.length > 0).length + polygons.filter(p => p.labels.length > 0).length}
         selectedId={selectedId}
         hasImage={!!imageMeta}
         imageName={imageMeta?.fileName ?? ""}
@@ -773,10 +888,25 @@ export function AnnotationWorkspace() {
         onToggleRecommendation={() => setRecommendationEnabled((prev) => !prev)}
         onClearAll={() => {
           updateBBoxesWithHistory(() => []);
+          setPolygons([]);
           setSelectedId(null);
         }}
-        onDeleteSelected={() => selectedId && handleDeleteBBox(selectedId)}
+        onDeleteSelected={() => {
+          if (!selectedId) return;
+          if (selectedId.startsWith('p_')) {
+            // Delete polygon
+            setPolygons((prev) => prev.filter((p) => p.id !== selectedId));
+            setSelectedId(null);
+          } else {
+            // Delete bbox
+            handleDeleteBBox(selectedId);
+          }
+        }}
         onUploadClick={() => fileInputRef.current?.click()}
+        onOpenVisualizer={() => {
+          // Use a relative path to avoid import.meta issues in some environments
+          window.location.href = 'visualizer.html';
+        }}
       />
 
       {/* Main layout */}
@@ -785,7 +915,7 @@ export function AnnotationWorkspace() {
         <div className="w-64 flex-shrink-0 overflow-hidden flex flex-col">
           <CharacterPanel
             selectedBBoxId={selectedId}
-            selectedLabels={selectedBbox?.labels ?? []}
+            selectedLabels={selectedAnnotation?.labels ?? []}
             allBBoxes={bboxes}
             onAddLabel={handleAddLabel}
             onRemoveLabel={handleRemoveLabel}
@@ -802,10 +932,12 @@ export function AnnotationWorkspace() {
             imageNaturalWidth={imageMeta?.naturalWidth ?? 0}
             imageNaturalHeight={imageMeta?.naturalHeight ?? 0}
             bboxes={bboxes}
+            polygons={polygons}
             selectedId={selectedId}
             mode={mode}
             zoom={zoom}
             onAddBBox={handleAddBBox}
+            onAddPolygon={handleAddPolygon}
             onSelectBBox={setSelectedId}
             onUpdateBBox={handleUpdateBBox}
             onDragOver={(e) => e.preventDefault()}
@@ -822,10 +954,20 @@ export function AnnotationWorkspace() {
         <div className="w-64 flex-shrink-0 overflow-hidden flex flex-col">
           <PropertiesPanel
             bbox={selectedBbox}
+            polygon={selectedPolygon}
             allBBoxes={bboxes}
             imageMeta={imageMeta}
             onUpdate={handleUpdateBBox}
+            onUpdatePolygon={(id, updates) =>
+              updatePolygonsWithHistory((prev) =>
+                prev.map((p) => (p.id === id ? { ...p, ...updates } : p))
+              )
+            }
             onDelete={handleDeleteBBox}
+            onDeletePolygon={(id) => {
+              setPolygons((prev) => prev.filter((p) => p.id !== id));
+              setSelectedId(null);
+            }}
             customChars={customChars}
           />
         </div>
@@ -837,6 +979,7 @@ export function AnnotationWorkspace() {
         style={{ borderTop: "1px solid #1e293b", background: "#060f1e" }}
       >
         <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>D</kbd> Draw</span>
+        <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>G</kbd> Polygon</span>
         <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>S</kbd> Select</span>
         <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>P</kbd> Pan</span>
         <span><kbd className="px-1 py-0.5 rounded text-xs" style={{ background: "#1e293b", color: "#94a3b8" }}>Del</kbd> Delete</span>

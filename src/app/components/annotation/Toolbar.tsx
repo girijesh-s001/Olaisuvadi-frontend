@@ -13,6 +13,11 @@ import {
   Upload,
   Images,
   Search,
+  Pen,
+  ScanLine,
+  EyeOff,
+  Eye,
+  BarChart2,
 } from "lucide-react";
 import { DrawingMode, BoundingBox } from "./types";
 import { UserProfile } from "../auth/UserProfile";
@@ -37,6 +42,7 @@ interface Props {
   onClearAll: () => void;
   onDeleteSelected: () => void;
   onUploadClick: () => void;
+  onOpenVisualizer: () => void;
 }
 
 function ToolBtn({
@@ -108,6 +114,7 @@ export function Toolbar({
   onClearAll,
   onDeleteSelected,
   onUploadClick,
+  onOpenVisualizer,
 }: Props) {
   return (
     <div
@@ -158,6 +165,13 @@ export function Toolbar({
         label="Draw BBox"
         active={mode === "draw"}
         onClick={() => onModeChange("draw")}
+        disabled={!hasImage}
+      />
+      <ToolBtn
+        icon={<Pen size={14} />}
+        label="Draw Polygon"
+        active={mode === "draw-polygon"}
+        onClick={() => onModeChange("draw-polygon")}
         disabled={!hasImage}
       />
       <ToolBtn
@@ -242,6 +256,15 @@ export function Toolbar({
         active={recommendationEnabled}
         onClick={onToggleRecommendation}
         disabled={!hasImage}
+      />
+
+      <Divider />
+
+      {/* Visualizer */}
+      <ToolBtn
+        icon={<BarChart2 size={14} />}
+        label="Visualizer"
+        onClick={onOpenVisualizer}
       />
 
       <Divider />

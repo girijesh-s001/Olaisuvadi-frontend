@@ -1,14 +1,17 @@
 import React, { useState } from "react";
-import { BoundingBox, StrikedOut, TamilChar } from "./types";
+import { BoundingBox, Polygon, StrikedOut, TamilChar } from "./types";
 import { Trash2, ChevronDown, Info, Tag, AlertTriangle, Folder } from "lucide-react";
 import { getLabelInfo } from "./tamilData";
 
 interface Props {
   bbox: BoundingBox | null;
+  polygon?: Polygon | null;
   allBBoxes: BoundingBox[];
   imageMeta: { image_id: string; naturalWidth: number; naturalHeight: number; dpi: number } | null;
   onUpdate: (id: string, updates: Partial<BoundingBox>) => void;
+  onUpdatePolygon?: (id: string, updates: Partial<Polygon>) => void;
   onDelete: (id: string) => void;
+  onDeletePolygon?: (id: string) => void;
   customChars?: TamilChar[];
 }
 
@@ -63,8 +66,11 @@ function Section({ title, icon, children }: { title: string; icon: React.ReactNo
   );
 }
 
-export function PropertiesPanel({ bbox, imageMeta, onUpdate, onDelete }: Props) {
-  if (!bbox) {
+export function PropertiesPanel({ bbox, polygon, imageMeta, onUpdate, onUpdatePolygon, onDelete, onDeletePolygon }: Props) {
+  // Use whichever annotation is selected
+  const annotation = bbox ?? polygon ?? null;
+  const isPolygon = !!polygon && !bbox;
+  if (!annotation) {
     return (
       <div
         className="flex flex-col h-full"
@@ -107,6 +113,23 @@ export function PropertiesPanel({ bbox, imageMeta, onUpdate, onDelete }: Props) 
     );
   }
 
+  // Unified update handler
+  const handleUpdate = (updates: Partial<BoundingBox>) => {
+    if (isPolygon && polygon && onUpdatePolygon) {
+      onUpdatePolygon(polygon.id, updates as Partial<Polygon>);
+    } else if (bbox) {
+      onUpdate(bbox.id, updates);
+    }
+  };
+
+  const handleDelete = () => {
+    if (isPolygon && polygon && onDeletePolygon) {
+      onDeletePolygon(polygon.id);
+    } else if (bbox) {
+      onDelete(bbox.id);
+    }
+  };
+
   return (
     <div
       className="flex flex-col h-full overflow-y-auto"
@@ -116,15 +139,18 @@ export function PropertiesPanel({ bbox, imageMeta, onUpdate, onDelete }: Props) 
       <div className="px-3 py-2.5 flex items-center gap-2" style={{ borderBottom: "1px solid #1e293b" }}>
         <div
           className="w-3 h-3 rounded-sm flex-shrink-0"
-          style={{ background: bbox.color, border: `2px solid ${bbox.color}80` }}
+          style={{ background: annotation.color, border: `2px solid ${annotation.color}80` }}
         />
         <div className="flex-1 min-w-0">
           <div className="text-xs text-slate-200 font-mono truncate" style={{ fontWeight: 600 }}>
-            {bbox.glyphId}
+            {annotation.glyphId}
           </div>
+          {isPolygon && (
+            <div className="text-xs text-slate-500" style={{ fontSize: 9, marginTop: 2 }}>POLYGON</div>
+          )}
         </div>
         <button
-          onClick={() => onDelete(bbox.id)}
+          onClick={handleDelete}
           title="Delete"
           className="text-slate-500 hover:text-red-400 p-1 rounded hover:bg-slate-800 transition-colors"
         >
@@ -132,41 +158,70 @@ export function PropertiesPanel({ bbox, imageMeta, onUpdate, onDelete }: Props) 
         </button>
       </div>
 
-      {/* Bbox coordinates */}
-      <Section title="BOUNDING BOX" icon={<Tag size={12} />}>
-        <div className="grid grid-cols-2 gap-1.5 mt-1">
-          {(["x", "y", "w", "h"] as const).map((key) => (
-            <div key={key}>
-              <label className="text-xs text-slate-500 block mb-0.5">{key.toUpperCase()}</label>
-              <input
-                type="number"
-                value={bbox[key]}
-                onChange={(e) =>
-                  onUpdate(bbox.id, { [key]: parseInt(e.target.value) || 0 })
-                }
-                className="w-full px-2 py-1 rounded text-xs font-mono outline-none"
-                style={{
-                  background: "#0f172a",
-                  border: "1px solid #334155",
-                  color: "#e2e8f0",
-                }}
-              />
+      {/* Coordinates section — bbox shows x/y/w/h fields; polygon shows vertex count */}
+      {isPolygon ? (
+        <Section title="POLYGON" icon={<Tag size={12} />}>
+          <div className="mt-1 space-y-1">
+            <div className="flex justify-between text-xs mb-2">
+              <span className="text-slate-500">Vertices</span>
+              <span className="text-slate-300 font-mono">{polygon!.points.length}</span>
             </div>
-          ))}
-        </div>
-      </Section>
+            {polygon!.points.length > 0 && (
+              <div 
+                className="max-h-32 overflow-y-auto space-y-1 pr-1"
+                style={{ scrollbarWidth: "thin", scrollbarColor: "#334155 transparent" }}
+              >
+                {polygon!.points.map((p, i) => (
+                  <div 
+                    key={i} 
+                    className="flex items-center gap-2 text-xs font-mono"
+                    style={{ background: "#0f172a", padding: "2px 6px", borderRadius: "4px", border: "1px solid #1e293b" }}
+                  >
+                    <span className="text-slate-500 w-4">{i + 1}.</span>
+                    <span className="text-blue-400 flex-1">x: {Math.round(p.x)}</span>
+                    <span className="text-emerald-400 flex-1">y: {Math.round(p.y)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="text-xs text-slate-600 italic mt-1.5">Points are stored in image pixel coordinates</div>
+          </div>
+        </Section>
+      ) : (
+        <Section title="BOUNDING BOX" icon={<Tag size={12} />}>
+          <div className="grid grid-cols-2 gap-1.5 mt-1">
+            {(["x", "y", "w", "h"] as const).map((key) => (
+              <div key={key}>
+                <label className="text-xs text-slate-500 block mb-0.5">{key.toUpperCase()}</label>
+                <input
+                  type="number"
+                  value={bbox![key]}
+                  onChange={(e) =>
+                    onUpdate(bbox!.id, { [key]: parseInt(e.target.value) || 0 })
+                  }
+                  className="w-full px-2 py-1 rounded text-xs font-mono outline-none"
+                  style={{
+                    background: "#0f172a",
+                    border: "1px solid #334155",
+                    color: "#e2e8f0",
+                  }}
+                />
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
 
       {/* Labels */}
       <Section title="LABELS" icon={<Tag size={12} />}>
         <div className="mt-1">
-          {bbox.labels.length === 0 ? (
+          {annotation.labels.length === 0 ? (
             <div className="text-xs text-slate-600 italic py-1">No labels — click characters on the left</div>
           ) : (
             <>
-              {/* Separate custom folders from standard labels */}
               {(() => {
-                const customFolders = bbox.labels.filter((l) => l.startsWith("FOLDER_"));
-                const standardLabels = bbox.labels.filter((l) => !l.startsWith("FOLDER_"));
+                const customFolders = annotation.labels.filter((l) => l.startsWith("FOLDER_"));
+                const standardLabels = annotation.labels.filter((l) => !l.startsWith("FOLDER_"));
 
                 return (
                   <div className="space-y-2">
@@ -181,7 +236,6 @@ export function PropertiesPanel({ bbox, imageMeta, onUpdate, onDelete }: Props) 
                         </div>
                         <div className="flex flex-wrap gap-1.5">
                           {customFolders.map((lbl) => {
-                            // Prefer Tamil character from registered custom data
                             const info = getLabelInfo(lbl);
                             const displayLabel = info?.char || lbl.replace("FOLDER_", "").replace(/_/g, " ");
                             return (
@@ -198,7 +252,7 @@ export function PropertiesPanel({ bbox, imageMeta, onUpdate, onDelete }: Props) 
                                 <span style={{ fontWeight: 600, fontFamily: "'Noto Sans Tamil', serif", fontSize: 16 }}>{displayLabel}</span>
                                 <button
                                   onClick={() =>
-                                    onUpdate(bbox.id, { labels: bbox.labels.filter((l) => l !== lbl) })
+                                    handleUpdate({ labels: annotation.labels.filter((l) => l !== lbl) })
                                   }
                                   className="text-slate-400 hover:text-red-400 transition-colors leading-none ml-0.5"
                                 >
@@ -232,7 +286,7 @@ export function PropertiesPanel({ bbox, imageMeta, onUpdate, onDelete }: Props) 
                               <span style={{ fontFamily: "monospace" }}>{lbl}</span>
                               <button
                                 onClick={() =>
-                                  onUpdate(bbox.id, { labels: bbox.labels.filter((l) => l !== lbl) })
+                                  handleUpdate({ labels: annotation.labels.filter((l) => l !== lbl) })
                                 }
                                 className="text-slate-500 hover:text-red-400 transition-colors leading-none"
                               >
@@ -248,7 +302,7 @@ export function PropertiesPanel({ bbox, imageMeta, onUpdate, onDelete }: Props) 
               })()}
             </>
           )}
-          {bbox.labels.length > 1 && (
+          {annotation.labels.length > 1 && (
             <div
               className="flex items-center gap-1.5 px-2 py-1.5 rounded text-xs mt-2"
               style={{ background: "#172033", border: "1px solid #1e3a5f", color: "#93c5fd" }}
@@ -265,25 +319,25 @@ export function PropertiesPanel({ bbox, imageMeta, onUpdate, onDelete }: Props) 
         <div className="space-y-2.5 mt-1">
           <Toggle
             label="Elongated stroke"
-            checked={bbox.variant.elongated}
+            checked={annotation.variant.elongated}
             onChange={(v) =>
-              onUpdate(bbox.id, { variant: { ...bbox.variant, elongated: v } })
+              handleUpdate({ variant: { ...annotation.variant, elongated: v } })
             }
           />
           <Toggle
             label="Broken glyph"
-            checked={bbox.variant.broken}
+            checked={annotation.variant.broken}
             onChange={(v) =>
-              onUpdate(bbox.id, { variant: { ...bbox.variant, broken: v } })
+              handleUpdate({ variant: { ...annotation.variant, broken: v } })
             }
           />
           <div>
             <label className="text-xs text-slate-500 block mb-1">Striked-out</label>
             <select
-              value={bbox.variant.striked_out}
+              value={annotation.variant.striked_out}
               onChange={(e) =>
-                onUpdate(bbox.id, {
-                  variant: { ...bbox.variant, striked_out: e.target.value as StrikedOut },
+                handleUpdate({
+                  variant: { ...annotation.variant, striked_out: e.target.value as StrikedOut },
                 })
               }
               className="w-full px-2 py-1.5 rounded text-xs outline-none"
@@ -310,15 +364,15 @@ export function PropertiesPanel({ bbox, imageMeta, onUpdate, onDelete }: Props) 
         <div className="mt-1">
           <div className="flex justify-between items-center mb-1.5">
             <span className="text-xs text-slate-500">Score</span>
-            <span className="text-xs text-slate-200 font-mono">{bbox.confidence.toFixed(2)}</span>
+            <span className="text-xs text-slate-200 font-mono">{annotation.confidence.toFixed(2)}</span>
           </div>
           <input
             type="range"
             min={0}
             max={1}
             step={0.05}
-            value={bbox.confidence}
-            onChange={(e) => onUpdate(bbox.id, { confidence: parseFloat(e.target.value) })}
+            value={annotation.confidence}
+            onChange={(e) => handleUpdate({ confidence: parseFloat(e.target.value) })}
             className="w-full accent-blue-500"
             style={{ cursor: "pointer" }}
           />
